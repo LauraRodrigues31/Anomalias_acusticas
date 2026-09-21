@@ -1,0 +1,99 @@
+{
+  "modo": "manifest",
+  "split": "val",
+  "alvo": "native",
+  "alvo_descricao": "host (PC): NÃO representa o ESP32",
+  "carimbo": "20260921-004051",
+  "validado_em_hardware": false,
+  "n_clipes": 544,
+  "clip": {
+    "global": {
+      "n": 544,
+      "tp": 71,
+      "fn": 7,
+      "fp": 8,
+      "tn": 458,
+      "recall": 0.9102564102564102,
+      "fpr": 0.017167381974248927,
+      "precision": 0.8987341772151899,
+      "accuracy": 0.9724264705882353
+    },
+    "positivo_sintetico": {
+      "n": 75,
+      "tp": 69,
+      "fn": 6,
+      "fp": 0,
+      "tn": 0,
+      "recall": 0.92,
+      "fpr": null,
+      "precision": 1.0,
+      "accuracy": 0.92
+    },
+    "positivo_real": {
+      "n": 3,
+      "tp": 2,
+      "fn": 1,
+      "fp": 0,
+      "tn": 0,
+      "recall": 0.6666666666666666,
+      "fpr": null,
+      "precision": 1.0,
+      "accuracy": 0.6666666666666666
+    },
+    "negativo_comum": {
+      "n": 386,
+      "tp": 0,
+      "fn": 0,
+      "fp": 2,
+      "tn": 384,
+      "recall": null,
+      "fpr": 0.0051813471502590676,
+      "precision": 0.0,
+      "accuracy": 0.9948186528497409
+    },
+    "negativo_dificil": {
+      "n": 80,
+      "tp": 0,
+      "fn": 0,
+      "fp": 6,
+      "tn": 74,
+      "recall": null,
+      "fpr": 0.075,
+      "precision": 0.0,
+      "accuracy": 0.925
+    }
+  },
+  "latencia_us": {
+    "t_sched_us": null,
+    "t_feat_us": {
+      "n": 94220,
+      "mean": 18.481797919762258,
+      "p50": 17.0,
+      "p95": 27.0,
+      "max": 1389.0
+    },
+    "t_queue_us": null,
+    "t_infer_us": {
+      "n": 94220,
+      "mean": 0.0011568669072383783,
+      "p50": 0.0,
+      "p95": 0.0,
+      "max": 8.0
+    },
+    "t_total_us": {
+      "n": 94220,
+      "mean": 18.482954786669495,
+      "p50": 17.0,
+      "p95": 27.0,
+      "max": 1389.0
+    },
+    "t_decision_us": {
+      "n": 183,
+      "mean": 170841.5300546448,
+      "p50": 160000.0,
+      "p95": 224000.0,
+      "max": 224000.0
+    }
+  },
+  "contadores_esp32": null
+}

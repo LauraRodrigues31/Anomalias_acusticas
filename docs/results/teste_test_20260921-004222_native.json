@@ -1,0 +1,99 @@
+{
+  "modo": "manifest",
+  "split": "test",
+  "alvo": "native",
+  "alvo_descricao": "host (PC): NÃO representa o ESP32",
+  "carimbo": "20260921-004222",
+  "validado_em_hardware": false,
+  "n_clipes": 544,
+  "clip": {
+    "global": {
+      "n": 544,
+      "tp": 73,
+      "fn": 5,
+      "fp": 12,
+      "tn": 454,
+      "recall": 0.9358974358974359,
+      "fpr": 0.02575107296137339,
+      "precision": 0.8588235294117647,
+      "accuracy": 0.96875
+    },
+    "positivo_sintetico": {
+      "n": 75,
+      "tp": 70,
+      "fn": 5,
+      "fp": 0,
+      "tn": 0,
+      "recall": 0.9333333333333333,
+      "fpr": null,
+      "precision": 1.0,
+      "accuracy": 0.9333333333333333
+    },
+    "positivo_real": {
+      "n": 3,
+      "tp": 3,
+      "fn": 0,
+      "fp": 0,
+      "tn": 0,
+      "recall": 1.0,
+      "fpr": null,
+      "precision": 1.0,
+      "accuracy": 1.0
+    },
+    "negativo_comum": {
+      "n": 386,
+      "tp": 0,
+      "fn": 0,
+      "fp": 6,
+      "tn": 380,
+      "recall": null,
+      "fpr": 0.015544041450777202,
+      "precision": 0.0,
+      "accuracy": 0.9844559585492227
+    },
+    "negativo_dificil": {
+      "n": 80,
+      "tp": 0,
+      "fn": 0,
+      "fp": 6,
+      "tn": 74,
+      "recall": null,
+      "fpr": 0.075,
+      "precision": 0.0,
+      "accuracy": 0.925
+    }
+  },
+  "latencia_us": {
+    "t_sched_us": null,
+    "t_feat_us": {
+      "n": 94760,
+      "mean": 19.452448290417898,
+      "p50": 17.0,
+      "p95": 31.0,
+      "max": 2289.0
+    },
+    "t_queue_us": null,
+    "t_infer_us": {
+      "n": 94760,
+      "mean": 0.0015512874630645842,
+      "p50": 0.0,
+      "p95": 0.0,
+      "max": 17.0
+    },
+    "t_total_us": {
+      "n": 94760,
+      "mean": 19.453999577880964,
+      "p50": 17.0,
+      "p95": 31.0,
+      "max": 2289.0
+    },
+    "t_decision_us": {
+      "n": 198,
+      "mean": 171636.36363636365,
+      "p50": 160000.0,
+      "p95": 224000.0,
+      "max": 224000.0
+    }
+  },
+  "contadores_esp32": null
+}
