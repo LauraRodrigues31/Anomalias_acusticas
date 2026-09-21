@@ -2,9 +2,12 @@
 #include <Arduino.h>
 #include "board_config.h"
 
-static bool s_led_on = false, s_buz_on = false;
-static uint32_t s_led_off_ms = 0, s_buz_off_ms = 0, s_suppress_until_ms = 0;
-static bool s_suppress_valid = false;
+static bool s_led_on = false;
+static uint32_t s_led_off_ms = 0;
+#if USE_BUZZER
+static bool s_buz_on = false, s_suppress_valid = false;
+static uint32_t s_buz_off_ms = 0, s_suppress_until_ms = 0;
+#endif
 
 void alert_init() {
   pinMode(LED_PIN, OUTPUT);
@@ -43,10 +46,15 @@ void alert_update(uint32_t now_ms) {
 }
 
 bool alert_suppressed(uint32_t now_ms) {
+#if !USE_BUZZER
+  (void)now_ms;
+  return false;
+#else
   if (!s_suppress_valid) return false;
   if ((int32_t)(now_ms - s_suppress_until_ms) >= 0) {
     s_suppress_valid = false;
     return false;
   }
   return true;
+#endif
 }

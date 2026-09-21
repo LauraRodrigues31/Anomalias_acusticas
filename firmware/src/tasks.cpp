@@ -46,7 +46,7 @@ static bool take(SemaphoreHandle_t m) {
 
 // printf serializado. O buffer estático é protegido pelo próprio log_mutex.
 static char s_logbuf[384];
-static void log_printf(const char* fmt, ...) {
+static void serial_log(const char* fmt, ...) {
   if (!take(log_mutex)) return;
   va_list ap;
   va_start(ap, fmt);
@@ -63,7 +63,7 @@ static void log_S_line() {
     drops = g_stats.queue_drops;
     xSemaphoreGive(stats_mutex);     // ...solta...
   }
-  log_printf("S,%u,%u,%u,%u,%u,%u,%u\n", (unsigned)g_overruns.load(), (unsigned)drops,  // ...depois log
+  serial_log("S,%u,%u,%u,%u,%u,%u,%u\n", (unsigned)g_overruns.load(), (unsigned)drops,  // ...depois log
              (unsigned)g_mutex_timeouts.load(), (unsigned)uxTaskGetStackHighWaterMark(h_t1),
              (unsigned)uxTaskGetStackHighWaterMark(h_t2), (unsigned)uxTaskGetStackHighWaterMark(h_t3),
              (unsigned)uxTaskGetStackHighWaterMark(h_t4));
@@ -226,19 +226,19 @@ static void t3_anomaly_detect(void*) {
       }
 #if AUDIO_SOURCE_SERIAL
       // Log por janela só no modo de teste (custo de Serial em T3; T1 nunca imprime).
-      log_printf("W,%u,%u,%lld,%.3f,%.6f,%.6f,%.6f,%.6f,%.6f,%d,%u,%u,%u,%u,%u\n", (unsigned)m.clip_id,
+      serial_log("W,%u,%u,%lld,%.3f,%.6f,%.6f,%.6f,%.6f,%.6f,%d,%u,%u,%u,%u,%u\n", (unsigned)m.clip_id,
                  (unsigned)m.window_id, (long long)m.t_block_ready_us, m.rms_db, m.feat[0], m.feat[1], m.feat[2],
                  m.feat[3], prob, pos ? 1 : 0, (unsigned)t_sched, (unsigned)t_feat, (unsigned)t_queue,
                  (unsigned)t_infer, (unsigned)t_total);
 #endif
       if (alert)
-        log_printf("A,%u,%u,%lld,%u\n", (unsigned)m.clip_id, (unsigned)m.window_id, (long long)t_end,
+        serial_log("A,%u,%u,%lld,%u\n", (unsigned)m.clip_id, (unsigned)m.window_id, (long long)t_end,
                    (unsigned)t_decision);
     }
 #if AUDIO_SOURCE_SERIAL
     if (m.flags & FM_CLIP_END) {
       log_S_line();
-      log_printf("DONE %u\n", (unsigned)m.clip_id);
+      serial_log("DONE %u\n", (unsigned)m.clip_id);
     }
 #endif
   }
@@ -258,7 +258,7 @@ static void t4_monitor(void*) {
     } else {
       continue;
     }
-    log_printf("# t=%lus blocks=%u win=%u pos=%u gated=%u alerts=%u overruns=%u drops=%u torn=%u mtx_to=%u\n",
+    serial_log("# t=%lus blocks=%u win=%u pos=%u gated=%u alerts=%u overruns=%u drops=%u torn=%u mtx_to=%u\n",
                (unsigned long)(millis() / 1000), (unsigned)g_snap.blocks, (unsigned)g_snap.windows,
                (unsigned)g_snap.windows_pos, (unsigned)g_snap.windows_gated, (unsigned)g_snap.alerts,
                (unsigned)g_overruns.load(), (unsigned)g_snap.queue_drops, (unsigned)g_snap.torn_reads,
@@ -266,11 +266,11 @@ static void t4_monitor(void*) {
     for (int k = 0; k < LAT_COUNT; k++) {
       const LatStat& L = g_snap.lat[k];
       if (!L.count) continue;
-      log_printf("# %-10s n=%u mean=%uus p50=%uus p95=%uus max=%uus\n", LAT_NAMES[k], (unsigned)L.count,
+      serial_log("# %-10s n=%u mean=%uus p50=%uus p95=%uus max=%uus\n", LAT_NAMES[k], (unsigned)L.count,
                  (unsigned)(L.sum_us / L.count), (unsigned)lat_percentile(L, 50, scratch),
                  (unsigned)lat_percentile(L, 95, scratch), (unsigned)L.max_us);
     }
-    log_printf("# stack livre (bytes) T1=%u T2=%u T3=%u T4=%u\n", (unsigned)uxTaskGetStackHighWaterMark(h_t1),
+    serial_log("# stack livre (bytes) T1=%u T2=%u T3=%u T4=%u\n", (unsigned)uxTaskGetStackHighWaterMark(h_t1),
                (unsigned)uxTaskGetStackHighWaterMark(h_t2), (unsigned)uxTaskGetStackHighWaterMark(h_t3),
                (unsigned)uxTaskGetStackHighWaterMark(h_t4));
     log_S_line();
