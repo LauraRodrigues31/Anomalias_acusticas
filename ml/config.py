@@ -20,7 +20,7 @@ RMS_GATE_DB = -50.0
 
 # Decisão
 PROB_THRESHOLD_DEFAULT = 0.5    # sobrescrito por train.py (calibrado na validação)
-VOTE_N = 3
+VOTE_N = 3                      # sobrescritos por models/model_params.json (escolhidos na validação)
 VOTE_M = 5
 COOLDOWN_MS = 3000
 LED_ON_MS = 2000
@@ -30,3 +30,18 @@ FEATURE_NAMES = ["centroid_norm", "band_ratio", "band_peakiness", "peak_freq_nor
 N_FEATURES = len(FEATURE_NAMES)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+# Parâmetros de decisão escolhidos no treino (validação) sobrescrevem os padrões acima.
+def _load_trained():
+    import json
+    p = os.path.join(ROOT, "models", "model_params.json")
+    if os.path.exists(p):
+        with open(p) as f:
+            return json.load(f)
+    return {}
+
+
+_T = _load_trained()
+if _T.get("vote_n") and _T.get("vote_m"):
+    VOTE_N, VOTE_M = int(_T["vote_n"]), int(_T["vote_m"])
