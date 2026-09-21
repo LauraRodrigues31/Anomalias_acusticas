@@ -9,8 +9,8 @@
 #define DSP_BAND_K_LO 128
 #define DSP_BAND_K_HI 256
 #define DSP_RMS_GATE_DB -50.0f
-#define DSP_VOTE_N 3
-#define DSP_VOTE_M 5
+#define DSP_VOTE_N 6
+#define DSP_VOTE_M 8
 #define DSP_COOLDOWN_MS 3000
 #define DSP_LED_ON_MS 2000
 #define DSP_BUZZER_TAIL_MS 300

@@ -50,3 +50,4 @@ Nenhuma feature extra foi adicionada até aqui. MFCC fica fora do núcleo.
 
 - `band_peakiness` só é comparada quando `band_ratio ≥ 1e-4`. Abaixo disso (ex.: tom puro de 6 kHz) a banda 2–4 kHz contém só vazamento da janela de Hann, cuja amplitude está no piso de ruído do float32 da FFT; o erro relativo chega a ~2e-3 sem qualquer efeito prático (a janela é claramente negativa).
 - `rms_db` só é comparada quando `rms_db ≥ −80`. Para sinal constante (DC puro), o Python (soma em pares do numpy) dá exatamente 0 e o C++ (soma ingênua) deixa resíduo de arredondamento (≈ −96 dBFS). Ambos estão muito abaixo do gate (−50 dBFS), portanto a decisão é idêntica.
+- Nenhuma feature é comparada em janelas com `rms_db < −80` dBFS (silêncio quase digital, p.ex. −120 dBFS com ruído de 1 LSB): o `argmax` do espectro é decidido por ruído de arredondamento e diverge entre numpy e C++ (observado em `fs_608737.wav`); essas janelas ficam abaixo do gate (−50 dBFS) e nunca chegam ao modelo.

@@ -80,6 +80,10 @@ def main():
             continue
         for i, (d, w) in enumerate(zip(py, cw)):
             nwin += 1
+            if d["rms_db"] < -80.0:
+                # Silêncio quase digital (ruído de 1 LSB): argmax/centroid são decididos por arredondamento
+                # do float32 e a janela nunca chega ao modelo (gate = -50 dBFS). Ver feature_spec.md.
+                continue
             for k in C.FEATURE_NAMES:
                 # band_peakiness só é numericamente significativa se há energia na banda: com
                 # band_ratio < 1e-4 (ex.: tom de 6 kHz) a razão é feita de vazamento da Hann
