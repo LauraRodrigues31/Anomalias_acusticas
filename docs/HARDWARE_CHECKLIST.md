@@ -1,6 +1,6 @@
 # Checklist de hardware (em ordem de execução)
 
-> Versão 1 (fim da Fase 2). As seções 4–7 serão completadas quando o modelo treinado e o harness estiverem integrados (Fases 4–7). **Nenhum número de latência deste projeto foi medido no ESP32 ainda**: tudo que depende da placa está marcado `PENDENTE (medir no hardware)`.
+> Versão final. **Nenhum número de latência ou de acurácia ao vivo deste projeto foi medido no ESP32 ainda**: tudo que depende da placa está marcado `PENDENTE (medir no hardware)`. O firmware já contém o **modelo treinado** (limiar 0,9, voto 6 de 8).
 
 ## 1. Fiação (ESP32 DevKit ↔ INMP441)
 
@@ -55,7 +55,7 @@ Ajuste as constantes em `board_config.h` **ou** com `build_flags = -DI2S_SAMPLE_
 1. Com o autoteste, anote o `rms` do **silêncio da sala** (ex.: −65 dBFS) e do **alarme do celular a 30–50 cm** (ex.: −25 dBFS).
 2. `RMS_GATE_DB` deve ficar ~10 dB acima do ruído de sala e bem abaixo do alarme. Ele vem de `ml/config.py` (`RMS_GATE_DB`); altere lá e rode `python -m ml.gen_headers` (não edite `dsp_config.h` à mão).
 3. `PROB_THRESHOLD` é calibrado no treino (validação). Na sala, com `esp32-test`/monitor, veja a probabilidade das janelas do alarme. Se o alarme real do celular dá `prob` baixa de forma consistente, **não** mexa às cegas: registre os valores e discuta (pode ser necessário reforçar a augmentation de alto-falante/microfone).
-4. *(PENDENTE, depende do modelo treinado — Fase 4.)*
+4. Valores atuais (`models/model_params.json`): `PROB_THRESHOLD = 0,9`, voto **N = 6 de M = 8**, `RMS_GATE_DB = −50`. Para mudar N/M ou o limiar **não edite headers**: retreine (`python -m ml.train`) ou ajuste `models/model_params.json` e rode `python -m ml.gen_headers` + regrave. **PENDENTE (medir no hardware):** probabilidade das janelas do alarme real do celular a 30–50 cm.
 
 ## 5. Medir latência no hardware (preenche as tabelas do relatório)
 
@@ -63,10 +63,10 @@ Ajuste as constantes em `board_config.h` **ou** com `build_flags = -DI2S_SAMPLE_
 cd firmware
 pio run -e esp32-test -t upload
 cd ..
-python tests/run_test.py --target serial:/dev/ttyUSB0      # (Fase 5) troque a porta
+python tests/run_test.py --target serial:/dev/ttyUSB0 --split val --max-per-type 10   # troque a porta
 ```
 
-O resultado (CSV/JSON/PNG, carimbado com `esp32`) vai para `docs/results/`. Até lá: **PENDENTE (medir no hardware)**.
+O resultado (CSV/JSON/PNG, carimbado com `esp32`) vai para `docs/results/`. O lado serial do harness **nunca rodou numa placa** (só contra `tests/fake_esp32.py`): se algo falhar, veja `docs/serial_protocol.md`. Sem `--fast` o envio é em tempo real (um clipe de 5 s leva ~5 s). Até lá: **PENDENTE (medir no hardware)**.
 Também dá para ler as estatísticas a cada 5 s no monitor serial do `esp32dev` (linhas `# t_sched ...`, `# t_feat ...`, `S,...`).
 
 ## 6. Roteiro de ensaio da demo (10 repetições)
@@ -85,7 +85,7 @@ Também dá para ler as estatísticas a cada 5 s no monitor serial do `esp32dev`
 
 ## 7. O que preencher no relatório depois das medições reais
 
-- `docs/relatorio_tecnico.md`, seção *Análise de latência*: tabela com média/p50/p95/máx de `t_sched`, `t_feat`, `t_queue`, `t_infer`, `t_total`, `t_decision` (hoje `PENDENTE`).
+- `docs/relatorio_tecnico.md`, seção *Análise de latência* (tabela 6.2): tabela com média/p50/p95/máx de `t_sched`, `t_feat`, `t_queue`, `t_infer`, `t_total`, `t_decision` (hoje `PENDENTE`).
 - Contadores `overruns`, `queue_drops`, `mutex_timeouts` e *stack high-water marks* (linha `S,...`).
 - Acurácia ao vivo (tabela do item 6) e comparação com a acurácia do teste offline.
 - Valores de `I2S_SAMPLE_SHIFT`, `I2S_CHANNEL_SWAP` e `RMS_GATE_DB` que funcionaram na sua placa.
