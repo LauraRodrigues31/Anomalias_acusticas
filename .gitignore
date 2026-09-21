@@ -9,3 +9,4 @@ __pycache__/
 .vscode/
 firmware/.pio/
 .env
+Ponderada*.pdf
