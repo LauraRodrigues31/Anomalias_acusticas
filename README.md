@@ -46,10 +46,13 @@ python -m tests.parity_test                                   # features e model
 python tests/run_test.py --target native --split val          # acurácia por clipe/tipo + latência (tempos do HOST)
 python tests/run_test.py --target native --simulate-anomalies # cenas de 10 s com alarme em instante conhecido
 python tests/run_test.py --target native --demo-clip data/raw/demo/alarm_demo.wav
+python tests/run_test.py --target serial:/dev/ttyUSB0 --demo-clip data/raw/demo/alarm_demo.wav   # plano B: manda o áudio pelo USB ao ESP32 (firmware esp32-test)
 python tests/run_test.py --target serial:/dev/ttyUSB0 --split val --max-per-type 10   # ESP32 (não validado)
 ```
 
 Resultados em `docs/results/` (carimbados com o alvo). Tempos do `native` **não representam o ESP32**.
+
+**Calibração ao vivo** (firmware `esp32dev` gravado; ver `docs/HARDWARE_CHECKLIST.md`, seção 4): comandos de serial `GATE`, `THR`, `VOTE`, `MON`, `STATS` (só em RAM) e `python tests/calibrate.py --port <porta> --label silencio|fala|alarme|despertador|palma` / `--suggest`. Sem placa dá para ensaiar com `python tests/fake_esp32.py --live <wav> --speed 8`. Se o `pio` não estiver disponível, `DSP_CLI=/caminho/dsp_cli` aponta os testes para um `dsp_cli` compilado à mão.
 
 ## Reproduzir dados e treino
 

@@ -8,13 +8,13 @@ Leia na ordem. Tudo aqui descreve o **código que existe** neste repositório. S
 2. A tarefa **T1** guarda o áudio em blocos de 512 amostras num **buffer circular** e avisa a **T2** com um semáforo.
 3. A **T2** junta dois blocos (1024 amostras = 64 ms), calcula 4 números que resumem o "formato" do som (features) e os manda numa **fila**.
 4. A **T3** vê se o som parece alarme de fumaça (modelo) e se isso se repete em 6 das últimas 8 janelas; se sim, acende o **LED**.
-5. A **T4** só imprime estatísticas a cada 5 s. Dois **mutexes** evitam que as tarefas se atropelem na serial e nas estatísticas.
+5. A **T4** imprime estatísticas a cada 5 s e, no firmware de produção, aceita comandos pela serial (`GATE`, `THR`, `VOTE`, `MON`, `STATS`) para ajustar o gate, o limiar e o voto **sem regravar** (só em RAM). Dois **mutexes** evitam que as tarefas se atropelem na serial e nas estatísticas.
 
 ```
  INMP441 --I2S/DMA--> [T1 captura P5,core0] --ring_write--> [g_ring 8x512] --Give--> (blocks_ready)
                                                                                        |Take
  LED <-- [T3 detecção P2] <--feature_q (8 msgs)-- [T2 features P3,core1] <-------------+
-            |  \--stats_mutex--> SystemStats <--stats_mutex-- [T4 monitor P1] (lê a cada 5 s)
+            |  \--stats_mutex--> SystemStats <--stats_mutex-- [T4 monitor P1] (lê a cada 100 ms)
             \--log_mutex--> Serial <--log_mutex-- T4
 ```
 
@@ -29,7 +29,7 @@ Leia na ordem. Tudo aqui descreve o **código que existe** neste repositório. S
 | `tasks.cpp` `t1_audio_capture` | lê um bloco (`audio_read_block`), carimba `t_block_ready`, `ring_write`, `xSemaphoreGive(blocks_ready)`; se o Give falha, `g_overruns++` | captura contínua sem perder amostras | alimenta T2 |
 | `tasks.cpp` `t2_feature_extract` | `xSemaphoreTake`, `ring_read`, monta a janela (metade antiga + bloco novo), `features_compute`, `xQueueSend(...,0)` | separa "receber áudio" de "calcular" | alimenta T3 |
 | `tasks.cpp` `t3_anomaly_detect` | `xQueueReceive` (timeout 20 ms), gate de RMS, `model_predict`, `decision_update`, `alert_trigger`, calcula as latências | decisão e alerta | usa `lib/dsp`, `alert.cpp`, `stats` |
-| `tasks.cpp` `t4_monitor` | copia `g_stats` sob `stats_mutex`, solta, imprime | observabilidade | lê estatísticas |
+| `tasks.cpp` `t4_monitor` | a cada 100 ms: `poll_serial_commands` (comandos `GATE/THR/VOTE/MON/STATS`, interpretados por `lib/dsp/runtime_params.cpp`) e linhas `M` por janela; a cada 5 s copia `g_stats` sob `stats_mutex`, solta, imprime | observabilidade e ajuste ao vivo | lê estatísticas; escreve `g_params` |
 | `tasks.cpp` `take()` | pega um mutex com timeout de 50 ms; se falhar, `g_mutex_timeouts++` | nenhum mutex sem timeout | usado por T2/T3/T4 |
 | `tasks.cpp` `serial_log()` | `vsnprintf` num buffer estático **dentro** do `log_mutex` e `Serial.write` | evitar linhas misturadas | T3/T4 |
 | `audio_capture.cpp` `audio_init` / `audio_read_block` | configura o I2S (driver legado `driver/i2s.h`) e lê 512 palavras de 32 bits, convertendo com `audio_convert_sample` (`>> I2S_SAMPLE_SHIFT` + saturação). No `esp32-test` a fonte é a serial | traduz o INMP441 (24 bits alinhados à esquerda) para `int16` do treino | usado só por T1 |
@@ -46,7 +46,8 @@ Leia na ordem. Tudo aqui descreve o **código que existe** neste repositório. S
 | `fft.cpp` `dsp_init`, `fft_real_mag` | FFT radix-2 iterativa de 1024 pontos em `float`; tabelas de seno/cosseno, Hann e bit-reversal pré-calculadas em `dsp_init` |
 | `audio_features.cpp` `features_compute` | DC, RMS, Hann, FFT, centroide, `band_ratio`, `band_peakiness`, `peak_freq_norm` |
 | `model.cpp` `model_predict` | regressão logística com os pesos de `model_params.h` |
-| `decision.cpp` `decision_update` | regra N de M + cooldown + supressão (ignora a janela) |
+| `decision.cpp` `decision_update` | regra N de M (N e M são argumentos, podem mudar por `VOTE`) + cooldown + supressão (ignora a janela) |
+| `runtime_params.cpp` `cmd_execute` | valida e aplica os comandos de serial em `RuntimeParams` (testado no PC) |
 
 `include/dsp_config.h` e `include/model_params.h` são **gerados** por `ml/gen_headers.py`. `firmware/tools/dsp_cli.cpp` roda tudo no PC com o mesmo protocolo da serial.
 
@@ -62,7 +63,7 @@ Leia na ordem. Tudo aqui descreve o **código que existe** neste repositório. S
 | `blocks_ready` (semáforo de **contagem**, máx. 8) | a ordem "bloco pronto → T2 acorda" | T2 dorme sem gastar CPU; a contagem diz quantos blocos estão pendentes; `Give` que falha = overrun | T2 faria polling (CPU e atraso); sem como detectar overrun |
 | `feature_q` (fila, 8 × `FeatureMsg`) | passagem de resultados T2→T3 por **cópia** | desacopla ritmos; se T3 atrasar, T2 descarta (`queue_drops`) em vez de travar | T2 travaria ou compartilharia memória sem proteção |
 | `log_mutex` | `Serial` e o buffer `s_logbuf` | T3 e T4 escrevem; sem exclusão mútua as linhas se misturam | log corrompido (quebra o parser de `run_test.py`) |
-| `stats_mutex` | `g_stats` (contadores e latências) | T2/T3 escrevem, T4 lê | T4 leria valores "rasgados" (meio atualizados) |
+| `stats_mutex` | `g_stats` (contadores e latências), `g_params` (GATE/THR/VOTE/MON) e o anel de janelas do monitor | T2/T3 escrevem estatísticas, T4 lê e altera parâmetros, T3 lê parâmetros | T4 leria valores "rasgados" (meio atualizados); T3 leria um limiar meio atualizado |
 | atômicos `g_overruns`, `g_mutex_timeouts` | contadores tocados por T1 (e por quem falhar num mutex) | T1 **nunca** pode bloquear em mutex | usar mutex em T1 arriscaria travar a tarefa mais crítica |
 
 **Regra anti-deadlock:** nenhuma tarefa segura os dois mutexes ao mesmo tempo (`log_S_line` pega `stats`, solta, e só depois pega `log`). Se algum dia precisar dos dois, a ordem é sempre `stats → log`.
@@ -102,8 +103,8 @@ Carimbos com `esp_timer_get_time()` (µs): `t_block_ready` (T1) → `t_feat_star
 
 1. Mostre o **diagrama** (`docs/diagrama_tarefas.svg`): "4 tarefas, prioridade 5/3/2/1; captura no núcleo 0, o resto no 1".
 2. Ligue a placa e mostre o **autoteste** (LED pisca, barra de nível reage a uma palma).
-3. Grave o `esp32dev`, abra o monitor e diga: "a cada 5 s a T4 imprime contadores e latências; `overruns=0` significa que a captura não perdeu nada".
-4. Toque o alarme do celular a ~40 cm: o **LED acende** (pode levar ~0,3–0,5 s: 64 ms de janela + voto de 6 de 8).
+3. Grave o `esp32dev`, abra o monitor e diga: "a cada 5 s a T4 imprime contadores e latências (e, com `python tests/calibrate.py`, dá para ajustar gate/limiar/voto ao vivo); `overruns=0` significa que a captura não perdeu nada".
+4. (O limiar ao vivo é 0,99, não o 0,9 do treino: ver `docs/decisions.md` D11.) Toque o alarme do celular a ~40 cm: o **LED acende** (pode levar ~0,3–0,5 s: 64 ms de janela + voto de 6 de 8).
 5. Faça palmas, fale, sacuda chaves: o LED **não** acende. Seja franca: sirene/despertador podem disparar (nos testes, 7,5% dos negativos difíceis).
 6. Se der errado: mostre o log da serial salvo e rode `python tests/run_test.py --target native --demo-clip ...` para mostrar o pipeline decidindo janela a janela.
 

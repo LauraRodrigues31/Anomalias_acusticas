@@ -31,6 +31,22 @@ O firmware completa o último bloco de 512 amostras com zeros. O host pode envia
 - `t_block_ready_us` e `t_alert_us` estão na **linha do tempo do áudio** (µs desde o início do clipe), e `t_decision_us` = alerta − 1ª janela positiva do voto vencedor, também em tempo de áudio.
 - `S` sai com `-1` nos campos de stack.
 
+## Comandos de serial do firmware de produção (`esp32dev`)
+
+Só no `esp32dev` (o `esp32-test` usa a serial para o áudio). Lidos pela tarefa T4 a cada 100 ms; os valores mudam **só em RAM** (um reset volta aos valores iniciais: `dsp_config.h`/`model_params.h`, com o limiar sobrescrito por `LIVE_PROB_THRESHOLD` = 0,99 em `board_config.h`). Uma linha terminada em `\n`; maiúsculas/minúsculas indiferentes.
+
+| Comando | Efeito | Resposta |
+|---|---|---|
+| `GATE <dBFS>` | gate de RMS, −120..0 | `OK GATE -45.0` ou `ERR ...` |
+| `THR <p>` | limiar de probabilidade, (0, 1] | `OK THR 0.900` |
+| `VOTE <n> <m>` | regra n de m, 1 ≤ n ≤ m ≤ 16 | `OK VOTE 6 8` |
+| `MON 1` / `MON 0` | liga/desliga uma linha `M` por janela | `OK MON 1` |
+| `STATS` | imprime as estatísticas agora | linhas `#`, `P,...` e `S,...` |
+
+Linhas novas: `M,<janela>,<rms_db>,<prob>,<pos>,<votos_nas_últimas_M>,<alerta>` (uma por janela ≈ 31/s, entregue em rajadas a cada 100 ms; `prob = -1` se a janela ficou abaixo do gate; se T4 atrasar mais de ~0,5 s as janelas mais antigas são descartadas) e `P,<gate>,<thr>,<n>,<m>,<mon>` (parâmetros atuais, junto de cada bloco de estatísticas). O anel de janelas e os parâmetros ficam sob o `stats_mutex`; as respostas saem pelo `log_mutex` depois de soltar o outro.
+
+`tests/calibrate.py` usa esses comandos (coleta com `GATE -120`, restaura no fim). O interpretador está em `firmware/lib/dsp/runtime_params.*` e é testado no PC; `dsp_cli --live` e `tests/fake_esp32.py --live` simulam o dispositivo com o mesmo código. **Não validado na placa.**
+
 ## Estado de validação
 
 O lado do dispositivo (firmware) **não foi validado em hardware**. O lado do host do alvo serial foi exercitado apenas contra `tests/fake_esp32.py` (pty ligado ao `dsp_cli`); esses resultados saem rotulados `dispositivo-falso`.

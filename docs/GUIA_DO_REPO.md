@@ -32,17 +32,18 @@ Classificação usada em todas as tabelas:
 | `lib/dsp/fft.*` | FFT de 1024 pontos e tabelas (Hann, seno/cosseno) | Você; sem dependência de Arduino, roda no PC | EXIGIDO | Sem espectro, sem features |
 | `lib/dsp/audio_features.*` | Calcula RMS e as 4 features de uma janela | Você | EXIGIDO | Nada a classificar |
 | `lib/dsp/model.*` | Faz a conta da regressão logística | Você | EXIGIDO | Sem detecção |
-| `lib/dsp/decision.*` | Regra N de M, cooldown e supressão do buzzer | Você | EXIGIDO | Alarmes isolados/ruído disparariam sem controle |
+| `lib/dsp/decision.*` | Regra N de M (N e M são argumentos, mudam por `VOTE`), cooldown e supressão do buzzer | Você | EXIGIDO | Alarmes isolados/ruído disparariam sem controle |
+| `lib/dsp/runtime_params.*` | Parâmetros ajustáveis em RAM (gate, limiar, voto, monitor) e interpretador dos comandos `GATE/THR/VOTE/MON/STATS` | Você | ÚTIL (ajuste ao vivo sem regravar; `tasks.cpp` e `dsp_cli` o usam) | `tasks.cpp` e `dsp_cli.cpp` deixam de compilar |
 | `lib/dsp/library.json` | Metadados da biblioteca para o PlatformIO | Você | EXTRA | Nada (PlatformIO detecta a pasta sozinho) |
 | `src/main.cpp` | `setup()`: abre a serial, inicializa o DSP, cria as tarefas | Você | EXIGIDO | Firmware não inicia |
-| `src/tasks.*` | As 4 tarefas, semáforo, fila, 2 mutexes, cronometragem | Você | EXIGIDO (é o núcleo RTOS) | Sem RTOS = sem projeto |
+| `src/tasks.*` | As 4 tarefas, semáforo, fila, 2 mutexes, cronometragem; T4 também trata os comandos de serial | Você | EXIGIDO (é o núcleo RTOS) | Sem RTOS = sem projeto |
 | `src/ring.*` | Buffer circular com número de sequência por slot | Você | EXIGIDO | Sem passagem segura T1→T2 |
 | `src/audio_capture.*` | Leitura do I2S (ou da serial no `esp32-test`) e conversão 32→16 bits | Você | EXIGIDO | Sem áudio |
 | `src/alert.*` | LED, buzzer opcional e supressão | Você | EXIGIDO (alerta por LED) | Sem alerta |
 | `src/stats.*` | Contadores e cálculo de média/p50/p95 | Você | EXIGIDO (medir latência) | Sem estatísticas |
 | `src/selftest.*` | Autoteste de bring-up (`esp32-selftest`) | Você | ÚTIL | Perde o teste de fiação; o ambiente `esp32-selftest` deixa de fazer sentido |
-| `test/test_dsp/`, `test/test_decision/` | Testes Unity no PC (FFT, features, modelo, decisão) | Você; rodam com `pio test -e native` | EXIGIDO (código de teste) | Sem testes unitários |
-| `tools/dsp_cli.cpp` | Executável de PC que roda o mesmo pipeline lendo o protocolo da serial | Você; usado por `parity_test.py` e `run_test.py` | ÚTIL (os testes do PC dependem dele) | `parity_test` e `run_test --target native` deixam de funcionar |
+| `test/test_dsp/`, `test/test_decision/`, `test/test_cmd/` | Testes Unity no PC (FFT, features, modelo, decisão com N/M variável, comandos de serial) | Você; rodam com `pio test -e native` | EXIGIDO (código de teste) | Sem testes unitários |
+| `tools/dsp_cli.cpp` | Executável de PC que roda o mesmo pipeline lendo o protocolo da serial; com `--live` simula o firmware de produção (comandos, linhas `M`) | Você; usado por `parity_test.py`, `run_test.py` e `fake_esp32.py` | ÚTIL (os testes do PC dependem dele) | `parity_test` e `run_test --target native` deixam de funcionar |
 
 ## 3. `ml/` — dados, treino e exportação
 
@@ -77,8 +78,9 @@ Classificação usada em todas as tabelas:
 |---|---|---|---|
 | `run_test.py` | Harness: acurácia por tipo, latência, `--simulate-anomalies`, `--demo-clip`, alvos `native`/`serial` | EXIGIDO (é o "código de teste que simula anomalias e mede performance") | Perde a simulação e a medição |
 | `parity_test.py` | Prova que Python e C++ dão as mesmas features/probabilidades (e ONNX) | ÚTIL (defende a correção do modelo no ESP32) | Sem prova de equivalência |
-| `cli_io.py` | Roda o `dsp_cli` e interpreta as linhas `W`/`A`/`S` | ÚTIL (usado pelos dois acima) | Os dois quebram |
-| `fake_esp32.py` | ESP32 **falso** (pty + `dsp_cli`) para testar o lado do PC do alvo serial | EXTRA | Só perde esse ensaio; nada mais |
+| `cli_io.py` | Roda o `dsp_cli` (ou o binário indicado em `DSP_CLI`) e interpreta as linhas `W`/`A`/`S` | ÚTIL (usado pelos dois acima) | Os dois quebram |
+| `calibrate.py` | Coleta janelas ao vivo por serial (`--label silencio/alarme/...`) e sugere `GATE`, `THR` e `VOTE`; `--apply` envia os comandos | EXTRA (calibração na sala, sem regravar) | Perde a calibração assistida; os comandos de serial continuam funcionando à mão |
+| `fake_esp32.py` | ESP32 **falso** (pty + `dsp_cli`) para testar o lado do PC do alvo serial (`run_test`, inclusive `--demo-clip`) e, com `--live`, o `calibrate.py` | EXTRA | Só perde esses ensaios; nada mais |
 | `__init__.py` | Pacote Python | ÚTIL | `python -m tests.parity_test` falha |
 
 ## 6. `docs/`
@@ -112,7 +114,7 @@ Classificação usada em todas as tabelas:
 |---|---|---|---|
 | `data/README.md` | Fontes, licenças e como reproduzir | Você | ÚTIL (o relatório precisa citar fontes/licenças) |
 | `data/raw/` (ignorado) | Áudio baixado: ESC-50, fala, Hugging Face, Freesound (`SOURCES.csv`, `EXCLUDED.csv`) | **Scripts** de download | ÚTIL |
-| `data/processed/` (ignorado) | Clipes reamostrados, manifestos `*_manifest.csv` e janelas `windows_*.npz` | `ml/build_dataset.py` | ÚTIL |
+| `data/processed/` (ignorado) | Clipes reamostrados, manifestos `*_manifest.csv` e janelas `windows_*.npz`; `demo/demo_track.wav` (trilha de 79 s para ensaiar a demo); `calibration/` (coletas do `calibrate.py`) | `ml/build_dataset.py`, script avulso da trilha, `tests/calibrate.py` | ÚTIL |
 
 Se `data/` for apagado, tudo pode ser refeito seguindo `data/README.md` (o firmware e os testes unitários não dependem dele).
 
@@ -132,14 +134,15 @@ Se `data/` for apagado, tudo pode ser refeito seguindo `data/README.md` (o firmw
 
 ## B. Extras que podem ser removidos sem quebrar builds nem testes
 
-Verifiquei numa **cópia temporária** que, removendo todos os itens abaixo de uma vez, continuam passando: `pio test -e native` (13 testes), `pio run` nos 4 ambientes do firmware (`native-cli`, `esp32dev`, `esp32-test`, `esp32-selftest`), `python -m tests.parity_test` e os imports de `ml.*`. **Nada foi removido do seu repositório.** Cada comando abaixo só marca a remoção; depois é preciso `git commit`.
+Verifiquei numa **cópia temporária** que, removendo todos os itens abaixo de uma vez, continuam passando: `pio test -e native` (13 testes na época; hoje são 22, ver nota abaixo), `pio run` nos 4 ambientes do firmware (`native-cli`, `esp32dev`, `esp32-test`, `esp32-selftest`), `python -m tests.parity_test` e os imports de `ml.*`. **Nada foi removido do seu repositório.** Cada comando abaixo só marca a remoção; depois é preciso `git commit`.
 
 | Extra | Comando exato | Efeito colateral |
 |---|---|---|
 | `README` (10 bytes, sem extensão) | `git rm README` | nenhum |
 | `CLAUDE.md` | `git rm CLAUDE.md` | some a especificação usada pela IA |
 | `firmware/lib/dsp/library.json` | `git rm firmware/lib/dsp/library.json` | nenhum |
-| `tests/fake_esp32.py` | `git rm tests/fake_esp32.py` | some o ensaio do lado do PC do alvo serial |
+| `tests/fake_esp32.py` | `git rm tests/fake_esp32.py` | some o ensaio do lado do PC do alvo serial e do `calibrate.py` |
+| `tests/calibrate.py` | `git rm tests/calibrate.py` | some a calibração assistida (os comandos `GATE/THR/VOTE` do firmware continuam) |
 | `models/detector.joblib` | `git rm models/detector.joblib` | `python -m ml.export_onnx` só volta a funcionar depois de rodar `python -m ml.train` |
 | `docs/serial_protocol.md` | `git rm docs/serial_protocol.md` | links em `README.md`/`HARDWARE_CHECKLIST.md` ficam quebrados |
 | `docs/PEDIDOS_PARA_ALUNA.md` | `git rm docs/PEDIDOS_PARA_ALUNA.md` | some o lembrete de ouvir os clipes do Freesound |
@@ -151,7 +154,9 @@ Verifiquei numa **cópia temporária** que, removendo todos os itens abaixo de u
 
 Para **mover** em vez de apagar (mantém o histórico e o arquivo): `mkdir -p extras && git mv docs/serial_protocol.md docs/PEDIDOS_PARA_ALUNA.md tests/fake_esp32.py extras/`. (Os `.md` movidos ficam com links relativos quebrados; nenhum código depende deles.)
 
-**Não remova** (quebram build/teste): `ml/augment.py`, `ml/model.py`, `ml/decision.py`, `tests/cli_io.py`, `firmware/tools/dsp_cli.cpp`, `firmware/include/*.h`, `models/model_params.json`, `models/.test_used`, `tests/__init__.py`, `ml/__init__.py`.
+**Nota (atualização):** depois dessa verificação foram acrescentados `runtime_params.*`, `test_cmd`, `calibrate.py` e o modo `--live`. Os 22 testes Unity (7 + 8 + 7) e o `dsp_cli` foram compilados e rodados **à mão** com g++ (sem o `pio`) e o firmware ESP32 só teve a sintaxe checada com stubs; **rode `pio test -e native` e `pio run` nos 4 ambientes** para confirmar antes de commitar. A checagem de "remover sem quebrar" da lista acima vale para os itens listados; `tests/calibrate.py` não é importado por nenhum outro arquivo.
+
+**Não remova** (quebram build/teste): `firmware/lib/dsp/runtime_params.*`, `ml/augment.py`, `ml/model.py`, `ml/decision.py`, `tests/cli_io.py`, `firmware/tools/dsp_cli.cpp`, `firmware/include/*.h`, `models/model_params.json`, `models/.test_used`, `tests/__init__.py`, `ml/__init__.py`.
 
 ## C. Dez perguntas que a professora poderia fazer (respostas curtas, do código real)
 

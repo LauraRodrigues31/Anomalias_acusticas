@@ -11,7 +11,7 @@
 | Positivo real (API) | Freesound, API oficial, "smoke alarm"/"smoke detector", só CC0 e CC-BY | por clipe, em `data/raw/smoke_real/SOURCES.csv` | `FREESOUND_API_KEY=... python -m ml.fetch_freesound` |
 | Positivo real **manual** | baixados pela aluna em `data/raw/smoke_real_manual/` | por clipe (anotar em `SOURCES.csv` da pasta) | manual. **Só teste real** |
 | Negativos | ESC-50 (2000 clipes, 5 s, 50 classes; 44,1 kHz → 16 kHz) | ver `data/raw/ESC-50/LICENSE` (o conjunto todo é CC BY-NC 3.0, uso acadêmico; o subconjunto ESC-10 é CC BY 3.0) | `git clone --depth 1 https://github.com/karolpiczak/ESC-50 data/raw/ESC-50` |
-| Fala | `mini_speech_commands` (excerto do Speech Commands, TensorFlow; 8 palavras de 1 s, muitos locutores) | Speech Commands: CC BY 4.0 (conforme o dataset original) | `curl -O http://storage.googleapis.com/download.tensorflow.org/data/mini_speech_commands.zip` e descompactar em `data/raw/` |
+| Fala | `mini_speech_commands` (excerto do Speech Commands, TensorFlow; 8 palavras de 1 s, muitos locutores) | **confirmar**: o README do excerto não traz a licença e remete ao dataset original (Speech Commands) | `curl -O http://storage.googleapis.com/download.tensorflow.org/data/mini_speech_commands.zip` e descompactar em `data/raw/` |
 | Ruído de sala | branco/rosa/marrom sintéticos + classes de ambiente do ESC-50 | — | gerado em `build_dataset.py` |
 | Demo | `data/raw/demo/alarm_demo.wav` (se existir) | — | **fora de treino, validação e teste**; só `--demo-clip` |
 

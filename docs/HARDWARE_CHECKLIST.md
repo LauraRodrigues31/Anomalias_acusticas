@@ -38,24 +38,44 @@ O LED da placa acende quando o nível passa de `RMS_GATE_DB` (−50 dBFS).
 
 ## 3. Como interpretar o autoteste
 
-| Sintoma | Causa provável | O que fazer |
+O autoteste descarta o 1º bloco (o INMP441 leva ~250 ms para ligar e entrega zeros) e depois imprime a cada 500 ms: `raw min/max/media` (palavras de 32 bits, 24 bits úteis nos bits 31..8), `dc` (offset médio em `int16`), `pico`, `rms` em dBFS, se está acima/abaixo do gate (−50 dBFS), uma barra de nível e, quando reconhece um padrão de erro, uma linha `<< ...` com a causa provável. `I2S_SAMPLE_SHIFT = 16` converte para `int16` (mesmo domínio dos WAVs de treino); cada passo a menos no shift = **+6 dB** de ganho digital.
+
+| Sintoma na serial | Causa provável | O que ajustar |
 |---|---|---|
-| `raw min=0 max=0` (**TRAVADO EM ZERO**) | SD sem conexão, VDD sem 3,3 V, ou canal errado | conferir SD (GPIO 33), VDD, GND; alternar `I2S_CHANNEL_SWAP` (0↔1) e regravar |
-| leitura muda quando L/R vai para 3V3 | canal trocado | mantenha L/R no GND **e** use `I2S_CHANNEL_SWAP=1` se o zero persistir |
-| `rms` sempre ≈ −90 dBFS mesmo batendo palma | sinal fraco: deslocamento grande demais | diminuir `I2S_SAMPLE_SHIFT` (ex.: 14 ou 12); há saturação nos extremos |
-| aviso **SATURANDO** | deslocamento pequeno demais/som muito alto | aumentar `I2S_SAMPLE_SHIFT` |
-| `rms` alto (> −20 dBFS) em silêncio, ruído enorme | fiação errada, fios longos, GND mal ligado | refazer GND e encurtar os fios |
-| `dc` (offset) alguns milhares | normal no INMP441 | o firmware remove o DC em cada janela; nada a fazer |
+| `raw` só 0 e 1 (rms −180 dBFS) — `<< MICROFONE NAO ESTA ENTREGANDO DADOS` (**não é silêncio**: o INMP441 real em silêncio tem ruído de vários LSBs) | VDD sem 3,3 V, GND, SCK, WS, SD, L/R flutuando ou canal errado | conferir SD (GPIO 33), WS (25), SCK (26), VDD (3V3) e GND; L/R no GND; trocar `I2S_CHANNEL_SWAP` (0↔1) e regravar |
+| `min` = `max` ≠ 0 — `<< AMOSTRAS CONSTANTES` | SD preso em nível fixo; sem clock (SCK/WS não chegam) | reconferir SCK/WS/SD, refazer os contatos (protoboard frouxa) |
+| valores ≠ 0 mas o `rms` não sobe com palma (fica < −80 dBFS) — `<< nivel muito baixo` | ganho digital baixo demais ou canal errado | diminuir `I2S_SAMPLE_SHIFT` (14 ou 12); se continuar, `I2S_CHANNEL_SWAP` |
+| `<< SINAL SATURADO`, `pico` ≈ 32767 | shift pequeno demais ou fonte muito perto | aumentar `I2S_SAMPLE_SHIFT`; afastar o celular |
+| `rms` alto (> −10 dBFS) com a sala em silêncio — `<< nivel muito alto` | ruído de fiação: fios longos, GND ruim, VDD em 5 V | fios < 15 cm, GND comum, VDD em 3V3 |
+| `dc` de milhares — `<< DC alto` | offset do INMP441 (normal) | nada; o firmware remove o DC em cada janela. Só se preocupe se vier com ruído alto |
+| leitura muda quando o L/R vai para 3V3 | você está no canal errado | manter L/R no GND **e** usar `I2S_CHANNEL_SWAP` conforme o resultado do teste |
+| alarme do celular fica **abaixo do gate** (`abaixo-do-gate`) | som fraco/longe; gate de −50 dBFS alto para o seu microfone | aproximar (30–50 cm), diminuir `I2S_SAMPLE_SHIFT` ou baixar o gate (seção 4); referência: 94 dB SPL ≈ −26 dBFS no INMP441 |
+| autoteste não imprime nada / lixo | baud errado | `pio device monitor -b 921600` |
+| upload falha ("Failed to connect") | GPIO 0/2 em nível errado no boot (LED externo/pull-up no GPIO 2) | soltar o LED externo do GPIO 2 durante a gravação; segurar BOOT se preciso |
 
-Os valores brutos (`raw`) são palavras de 32 bits com 24 bits úteis nos bits 31..8; `I2S_SAMPLE_SHIFT = 16` os converte para `int16` (mesmo domínio dos WAVs de treino).
-Ajuste as constantes em `board_config.h` **ou** com `build_flags = -DI2S_SAMPLE_SHIFT=14` no `platformio.ini`.
+Ajuste as constantes em `board_config.h` **ou** com `build_flags = -DI2S_SAMPLE_SHIFT=14` no `platformio.ini`. Auditoria do código I2S: pinos, `driver_install` → `set_pin` (ordem correta), formato 32 bits/`STAND_I2S`, `ONLY_LEFT`/`SWAP`, conversão com saturação e remoção de DC por janela estão conforme o esperado para Arduino-ESP32 2.0.x; **nada disso foi validado na placa**.
 
-## 4. Calibrar `RMS_GATE_DB` e `PROB_THRESHOLD` na sala real
+## 4. Calibrar `RMS_GATE_DB`, limiar e voto na sala real (sem regravar)
 
-1. Com o autoteste, anote o `rms` do **silêncio da sala** (ex.: −65 dBFS) e do **alarme do celular a 30–50 cm** (ex.: −25 dBFS).
-2. `RMS_GATE_DB` deve ficar ~10 dB acima do ruído de sala e bem abaixo do alarme. Ele vem de `ml/config.py` (`RMS_GATE_DB`); altere lá e rode `python -m ml.gen_headers` (não edite `dsp_config.h` à mão).
-3. `PROB_THRESHOLD` é calibrado no treino (validação). Na sala, com `esp32-test`/monitor, veja a probabilidade das janelas do alarme. Se o alarme real do celular dá `prob` baixa de forma consistente, **não** mexa às cegas: registre os valores e discuta (pode ser necessário reforçar a augmentation de alto-falante/microfone).
-4. Valores atuais (`models/model_params.json`): `PROB_THRESHOLD = 0,9`, voto **N = 6 de M = 8**, `RMS_GATE_DB = −50`. Para mudar N/M ou o limiar **não edite headers**: retreine (`python -m ml.train`) ou ajuste `models/model_params.json` e rode `python -m ml.gen_headers` + regrave. **PENDENTE (medir no hardware):** probabilidade das janelas do alarme real do celular a 30–50 cm.
+Com o `esp32dev` gravado (produção), os comandos `GATE`, `THR`, `VOTE`, `MON` e `STATS` (ver `docs/serial_protocol.md`) mudam os parâmetros **em RAM**; um reset volta aos padrões. Feche o monitor serial antes (a porta é exclusiva) e rode:
+
+```bash
+python tests/calibrate.py --port /dev/ttyUSB0 --label silencio --seconds 10
+python tests/calibrate.py --port /dev/ttyUSB0 --label alarme   --seconds 20   # celular tocando o alarme a 30-50 cm
+python tests/calibrate.py --port /dev/ttyUSB0 --label fala|palma|despertador --seconds 10
+python tests/calibrate.py --suggest [--port /dev/ttyUSB0 --apply]
+```
+
+**Sessão guiada (recomendada quando sirene/despertador/toque disparam o alerta):**
+
+```bash
+python tests/calibrate.py --port /dev/ttyUSB0 --sessao            # 7 rótulos x 20 s; grava docs/results/calibracao_<data>.csv (não versionado)
+python tests/calibrate.py --analisar docs/results/calibracao_<data>.csv   # refaz a análise sem a placa
+```
+
+Ela pede, um por vez, silencio, fala, palma_mesa, sirene, despertador, toque e alarme_fumaca ("toque X e aperte Enter"), coleta por `MON 1`, e imprime a probabilidade por rótulo e quantos ALERTAS cada combinação de `THR` {0,90; 0,95; 0,98; 0,99; 0,995} e `VOTE` {6/8, 7/8, 8/8, 10/12, 12/16} teria disparado. Recomenda a que mantém o alarme e minimiza os disparos; se nenhuma separa, diz isso e mostra a sobreposição das probabilidades. Para aplicar: `THR <p>` e `VOTE <n> <m>` no monitor serial (ou `--apply`, que só aplica se separar). Testada apenas contra o dispositivo simulado.
+
+Cada coleta imprime p50/p95/máx de `rms_db` e da probabilidade e a fração de janelas acima do limiar; `--suggest` propõe `GATE`, `THR` e `VOTE` que não disparam nos sons negativos coletados e disparam no alarme (e avisa se isso não for possível). Referência: `RMS_GATE_DB` deve ficar ~6 dB acima do p95 do silêncio e bem abaixo do alarme. Para tornar permanente, o gate vem de `ml/config.py` (`python -m ml.gen_headers`) e limiar/voto do treino; **não** ajuste olhando o conjunto de teste. Valores atuais: limiar de treino `PROB_THRESHOLD = 0,9` (offline), **limiar ao vivo 0,99** no `esp32dev` (override `LIVE_PROB_THRESHOLD` em `board_config.h`, decisão D11), voto **6 de 8**, `RMS_GATE_DB = −50`. **PENDENTE (medir no hardware):** as probabilidades reais do alarme do celular, e se a sugestão funciona na sua placa (testada só contra um dispositivo simulado).
 
 ## 5. Medir latência no hardware (preenche as tabelas do relatório)
 
@@ -81,7 +101,7 @@ Também dá para ler as estatísticas a cada 5 s no monitor serial do `esp32dev`
 | 1 | alarme | | | |
 | … | | | | |
 
-**Plano B:** log da serial salvo; vídeo gravado do ensaio; cabo USB reserva; `esp32-test` + `tests/run_test.py --target native` rodando no notebook para mostrar o pipeline sem a placa.
+**Plano B:** log da serial salvo; vídeo gravado do ensaio; cabo USB reserva; **se o microfone falhar**, grave o `esp32-test` e envie o áudio do alarme pelo USB: `python tests/run_test.py --target serial:/dev/ttyUSB0 --demo-clip <arquivo.wav>` (mostra a decisão janela a janela; ensaiado só contra o dispositivo simulado, **não validado na placa**); `esp32-test` + `tests/run_test.py --target native` rodando no notebook para mostrar o pipeline sem a placa.
 
 ## 7. O que preencher no relatório depois das medições reais
 

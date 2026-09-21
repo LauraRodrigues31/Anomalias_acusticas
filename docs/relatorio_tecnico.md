@@ -19,7 +19,7 @@ Quatro tarefas FreeRTOS (Arduino-ESP32 2.0.x sobre ESP-IDF 4.4). Diagrama comple
 | T1 `audio_capture` | 5 | 0 | `i2s_read` bloqueante (DMA), converte 32→16 bits, grava no buffer circular, dá o semáforo |
 | T2 `feature_extract` | 3 | 1 | espera o semáforo, monta a janela de 1024 amostras (2 blocos), calcula as features, envia à fila |
 | T3 `anomaly_detect` | 2 | 1 | recebe da fila, gate de RMS, modelo, regra N de M, LED/buzzer, mede latências |
-| T4 `monitor` | 1 | 1 | a cada 5 s imprime estatísticas (sob mutex), *stack high-water marks* |
+| T4 `monitor` | 1 | 1 | a cada 100 ms trata os comandos de serial (`GATE`, `THR`, `VOTE`, `MON`, `STATS`) e o monitor por janela; a cada 5 s imprime estatísticas (sob mutex) e *stack high-water marks* |
 
 ### 2.1 Cada objeto de sincronização e por quê
 
@@ -32,6 +32,8 @@ Quatro tarefas FreeRTOS (Arduino-ESP32 2.0.x sobre ESP-IDF 4.4). Diagrama comple
 | **Mutex** `stats_mutex` | protege `SystemStats` (escrita por T2/T3, leitura por T4) | T4 leria contadores e amostras de latência no meio de uma atualização |
 
 Escolhas relevantes:
+
+- **Ajuste ao vivo sem regravar:** no `esp32dev`, T4 lê comandos de serial e altera, **em RAM**, o gate, o limiar e o voto (`RuntimeParams`, sob `stats_mutex`); T3 relê os parâmetros a cada janela. `MON 1` faz T3 empurrar cada janela num anel de 16 posições (também sob `stats_mutex`) que T4 drena a cada 100 ms para a Serial. Um reset volta aos padrões gerados do treino. Não validado na placa.
 
 - **Mutex e não semáforo binário** para as seções críticas: o mutex do FreeRTOS tem **herança de prioridade**, evitando inversão de prioridade (T4, de prioridade 1, segurando o `stats_mutex` enquanto T3 espera). Todas as tomadas de mutex têm **timeout** (50 ms); falha vira `mutex_timeouts`.
 - **Anti-deadlock:** nenhuma tarefa segura os dois mutexes ao mesmo tempo (o código pega, solta e só então pega o outro). Se um dia for preciso, a ordem fixa é `stats → log`.
@@ -55,7 +57,7 @@ Por janela: remove DC (o INMP441 tem offset), calcula RMS (só para o *gate* de 
 
 **Modelo:** regressão logística com padronização (4 pesos + viés), treinada com scikit-learn, exportada para `models/detector.onnx` (skl2onnx) e verificada com onnxruntime (erro máximo 2e-7 contra o scikit-learn). No ESP32 a inferência roda em **C++** com os pesos exportados para `firmware/include/model_params.h` (`z = Σ wᵢ·(xᵢ−μᵢ)/σᵢ + b; p = 1/(1+e^−z)`); o `.onnx` é o entregável e é validado contra o C++ por teste de paridade (erro máximo 3e-6 nas probabilidades).
 
-**Decisão:** janela positiva se `rms_db ≥ −50` e `p ≥ 0,9`; **alerta** se ao menos **6 das últimas 8** janelas forem positivas, respeitando cooldown de 3 s. LED por 2 s. Limiar e N/M foram escolhidos **só na validação** (maior recall com FPR ≤ 3% por clipe). O voto padrão 3 de 5 da especificação, no mesmo limiar 0,9, dava na validação o mesmo recall (91,0%) com FPR de 4,3%, acima do orçamento de 3% que adotei; 6 de 8 dá FPR de 1,7% (só validação; ver `docs/decisions.md`, D7). Um MLP pequeno foi avaliado só na validação e descartado (D8).
+**Decisão:** janela positiva se `rms_db ≥ −50` e `p ≥ 0,9`; **alerta** se ao menos **6 das últimas 8** janelas forem positivas, respeitando cooldown de 3 s. LED por 2 s. **Limiar ao vivo:** no firmware de produção o valor inicial é 0,99 (override `LIVE_PROB_THRESHOLD`), calibrado ao vivo no ESP32 com `tests/calibrate.py` para que sirene, despertador e toque não disparem; **não** passou pelo conjunto de teste, as métricas da seção 5 são todas com 0,9, e a acurácia ao vivo com 0,99 só vale para os sons e a posição usados na calibração (`docs/decisions.md`, D11). Limiar (0,9) e N/M foram escolhidos **só na validação** (maior recall com FPR ≤ 3% por clipe). O voto padrão 3 de 5 da especificação, no mesmo limiar 0,9, dava na validação o mesmo recall (91,0%) com FPR de 4,3%, acima do orçamento de 3% que adotei; 6 de 8 dá FPR de 1,7% (só validação; ver `docs/decisions.md`, D7). Um MLP pequeno foi avaliado só na validação e descartado (D8).
 
 ## 4. Dados
 
@@ -116,7 +118,7 @@ Com N=6 de M=8, o voto exige pelo menos 6 janelas positivas; o alerta mais rápi
 | `t_total` | PENDENTE (medir no hardware) | PENDENTE | PENDENTE | PENDENTE |
 | `t_decision` | PENDENTE (medir no hardware) | PENDENTE | PENDENTE | PENDENTE |
 
-Contadores `overruns`, `queue_drops`, `mutex_timeouts` e *stack high-water marks*: **PENDENTE (medir no hardware)**. Uso de memória do build `esp32dev` (real, do compilador): RAM 26,5% (≈ 87 kB de 320 kB), flash 22,7% (≈ 298 kB de 1,3 MB).
+Contadores `overruns`, `queue_drops`, `mutex_timeouts` e *stack high-water marks*: **PENDENTE (medir no hardware)**. Uso de memória do build `esp32dev` (real, do compilador, medido **antes** de acrescentar os comandos de ajuste ao vivo; refazer com `pio run`): RAM 26,5% (≈ 87 kB de 320 kB), flash 22,7% (≈ 298 kB de 1,3 MB).
 
 ### 6.3 PC (host; não representam o ESP32)
 
@@ -141,12 +143,59 @@ Split de teste, 94.760 janelas, `dsp_cli` nativo (`docs/results/teste_test_*_nat
 
 **Trabalhos futuros:** coletar gravações reais no ambiente da demo; features temporais (modulação do padrão T3, 3 bipes + pausa) ou MFCC; MLP pequeno; calibrar o gate com o microfone real; usar o driver `i2s_std` do ESP-IDF 5; testar overrun de propósito (T2 atrasada) no hardware.
 
-## 8. Referências
+## 8. Fontes e atribuição
+
+Licenças conferidas nos arquivos das próprias fontes (data/raw/…), não de memória. O uso neste trabalho é acadêmico e não comercial.
+
+### 8.1 Positivos reais — Freesound (API oficial; 20 clipes mantidos após a curadoria)
+
+Lista gerada de `data/raw/smoke_real/SOURCES.csv` menos `EXCLUDED.csv` (a licença é a que a API do Freesound devolveu para cada clipe: 15 CC0 e 5 CC-BY). Foi usado o *preview* mp3 convertido para 16 kHz mono. Os clipes CC-BY exigem atribuição ao autor, dada abaixo.
+
+| Título | Autor (Freesound) | URL | Licença |
+|---|---|---|---|
+| Smoke Detector.wav | AaronGNP | <https://freesound.org/people/AaronGNP/sounds/44029/> | CC BY 4.0 |
+| Smoke Detector Chirp 2 | Bloofrzo | <https://freesound.org/people/Bloofrzo/sounds/819807/> | CC0 1.0 |
+| Smoke Detector Chirp 1 | Bloofrzo | <https://freesound.org/people/Bloofrzo/sounds/819808/> | CC0 1.0 |
+| smoke detector fire alarm sound effect | Garuda1982 | <https://freesound.org/people/Garuda1982/sounds/530094/> | CC0 1.0 |
+| smoke_alarm_piep_piep | Jan18101997 | <https://freesound.org/people/Jan18101997/sounds/170944/> | CC0 1.0 |
+| LOUD Smoke Alarm unplug.wav | LiftPizzas | <https://freesound.org/people/LiftPizzas/sounds/557484/> | CC0 1.0 |
+| Smoke detector alarm, distant neighboring room perspective.wav | SpliceSound | <https://freesound.org/people/SpliceSound/sounds/369847/> | CC0 1.0 |
+| Smoke detector alarm, close perspective.wav | SpliceSound | <https://freesound.org/people/SpliceSound/sounds/369848/> | CC0 1.0 |
+| Alarm_indoors_01 | Vitae-LI | <https://freesound.org/people/Vitae-LI/sounds/804505/> | CC BY 4.0 |
+| Testing smoke detector (SoundAction 239) | alexarje | <https://freesound.org/people/alexarje/sounds/863217/> | CC BY 4.0 |
+| ALRMElec_Smoke Detector Test Noise With Room_ladako_2m from mic.wav | ladako | <https://freesound.org/people/ladako/sounds/608738/> | CC0 1.0 |
+| ALRMElec_Smoke Detector Test Noise_ladako_20cm from mic.wav | ladako | <https://freesound.org/people/ladako/sounds/608737/> | CC0 1.0 |
+| ALRMElec_Smoke Detector Test Noise In Small Room_ladako_room reflections.wav | ladako | <https://freesound.org/people/ladako/sounds/608739/> | CC0 1.0 |
+| First Alert Smoke Detector Test Beep 01 | loganzsound | <https://freesound.org/people/loganzsound/sounds/856777/> | CC0 1.0 |
+| First Alert Smoke Detector 1m Away | loganzsound | <https://freesound.org/people/loganzsound/sounds/856776/> | CC0 1.0 |
+| First Alert Smoke Detector 0.3m Away | loganzsound | <https://freesound.org/people/loganzsound/sounds/856775/> | CC0 1.0 |
+| First Alert Smoke Detector Test Beep 02 | loganzsound | <https://freesound.org/people/loganzsound/sounds/856778/> | CC0 1.0 |
+| smoke alarm | opalmirage | <https://freesound.org/people/opalmirage/sounds/666761/> | CC0 1.0 |
+| Smoke Detector  Alarm | rayprice | <https://freesound.org/people/rayprice/sounds/155006/> | CC BY 3.0 |
+| smoke_alarm.wav | wjoojoo | <https://freesound.org/people/wjoojoo/sounds/345497/> | CC BY 4.0 |
+
+### 8.2 Positivos sintéticos — Hugging Face
+
+*ShantyCam — AudioDet Synthetic Smoke-Alarm Clips* (`ShantyCam/audiodet-synth-smoke`, 250 clipes sintéticos): **CC-BY-4.0**, conforme o `README.md` do dataset (metadado `license: cc-by-4.0` e a seção "License", que pede a atribuição "ShantyCam — AudioDet Synthetic Smoke-Alarm Clips"). O outro conjunto sintético (`ml/gen_smoke_alarm.py`) é código deste projeto.
+
+### 8.3 Negativos — ESC-50
+
+K. J. Piczak, *ESC: Dataset for Environmental Sound Classification*, Proceedings of the 23rd ACM Conference on Multimedia, Brisbane, 2015, DOI 10.1145/2733373.2806390. Conforme `ESC-50/LICENSE`: o conjunto como um todo está sob **CC BY-NC 3.0** (uso não comercial); o subconjunto ESC-10 está sob CC BY 3.0; cada clipe deriva de uma gravação do Freesound com licença própria (CC0 ou CC-BY, autor e URL de origem listados clipe a clipe no próprio `ESC-50/LICENSE`, que não é reproduzido aqui). Como este trabalho é acadêmico, o uso é compatível com a cláusula NC; **não** use os dados/modelo em produto comercial sem rever essa licença.
+
+### 8.4 Fala — mini_speech_commands
+
+Excerto do *Speech Commands Dataset* usado em tutoriais do TensorFlow (8 palavras). **Licença: confirmar.** O `README.md` do excerto não declara a licença; ele apenas remete à documentação e à licença do dataset original (Speech Commands, do Google). Confirme na página do dataset original antes de publicar.
+
+### 8.5 Outros
+
+Ruído branco/rosa/marrom e todo o áudio de augmentation são gerados por código deste projeto. Bibliotecas: scikit-learn, skl2onnx, onnxruntime, NumPy/SciPy, Unity (ThrowTheSwitch) e PlatformIO/Arduino-ESP32 (cada uma com sua licença própria; **confirmar** ao redistribuir binários).
+
+## 9. Referências
 
 - Documentação Arduino-ESP32 2.0.x e ESP-IDF 4.4 (`driver/i2s.h`), FreeRTOS (mutex com herança de prioridade, semáforos de contagem, filas).
 - Datasheet INMP441 (TDK InvenSense).
-- K. Piczak, *ESC: Dataset for Environmental Sound Classification* (ESC-50), ACM Multimedia 2015 (CC BY-NC 3.0).
-- P. Warden, *Speech Commands* (excerto `mini_speech_commands`, TensorFlow; CC BY 4.0).
+- K. J. Piczak, *ESC: Dataset for Environmental Sound Classification* (ESC-50), ACM Multimedia 2015, DOI 10.1145/2733373.2806390 (CC BY-NC 3.0).
+- *Speech Commands Dataset* (Google; excerto `mini_speech_commands` do TensorFlow); licença a confirmar (ver seção 8.4).
 - Hugging Face `ShantyCam/audiodet-synth-smoke` (CC-BY-4.0).
-- Freesound (API v2), clipes CC0/CC-BY listados em `data/raw/smoke_real/SOURCES.csv` (não versionado; citar os autores CC-BY ao publicar).
+- Freesound (API v2), clipes CC0/CC-BY listados na seção 8.1.
 - scikit-learn, skl2onnx, onnxruntime, Unity (ThrowTheSwitch), PlatformIO.

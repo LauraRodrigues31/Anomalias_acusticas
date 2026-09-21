@@ -93,6 +93,7 @@
   <text class="s" x="1347" y="222">t_recv / t_end → latências</text>
   <text class="s" x="1347" y="238">liga LED/buzzer; apaga no prazo</text>
   <text class="s" x="1347" y="254">ignora janelas com buzzer tocando</text>
+  <text class="s" x="1347" y="272">lê GATE/THR/VOTE (RAM) a cada janela</text>
 
   <!-- saídas -->
   <rect class="hw" x="1595" y="120" width="100" height="60" rx="8"/>
@@ -107,16 +108,17 @@
   <rect class="task" x="505" y="480" width="240" height="130" rx="8"/>
   <text class="h" x="517" y="504">T4 monitor</text>
   <text class="t" x="517" y="522">prioridade 1 · core 1</text>
-  <text class="s" x="517" y="544">a cada 5 s: copia SystemStats (sob mutex),</text>
-  <text class="s" x="517" y="560">solta o mutex e só então imprime:</text>
-  <text class="s" x="517" y="576">média, p50, p95, máx, contadores e</text>
-  <text class="s" x="517" y="592">stack high-water marks (linha S)</text>
+  <text class="s" x="517" y="544">a cada 100 ms: comandos de serial e</text>
+  <text class="s" x="517" y="560">linhas M por janela (se MON=1); a cada</text>
+  <text class="s" x="517" y="576">5 s copia SystemStats sob mutex, solta</text>
+  <text class="s" x="517" y="592">e imprime (#, P, S, stack livre)</text>
 
   <!-- mutexes -->
-  <rect class="mtx" x="800" y="360" width="400" height="70" rx="8"/>
+  <rect class="mtx" x="800" y="360" width="400" height="88" rx="8"/>
   <text class="h" x="812" y="384">stats_mutex → SystemStats</text>
-  <text class="s" x="812" y="402">contadores + acumuladores/amostras de latência</text>
-  <text class="s" x="812" y="418">escrita: T2 e T3 · leitura: T4 · herança de prioridade</text>
+  <text class="s" x="812" y="402">contadores, latências, parâmetros ao vivo (GATE,</text>
+  <text class="s" x="812" y="418">THR, VOTE, MON) e anel de janelas do monitor</text>
+  <text class="s" x="812" y="434">escrita: T2, T3, T4 · leitura: T3, T4 · herança de prio.</text>
 
   <rect class="mtx" x="1000" y="500" width="230" height="70" rx="8"/>
   <text class="h" x="1012" y="524">log_mutex</text>
@@ -146,7 +148,7 @@
 
   <!-- stats -->
   <path class="a" d="M900,290 V358"/><text class="lbl" x="908" y="330">escreve</text>
-  <path class="a" d="M1420,290 V330 H1100 V358"/><text class="lbl" x="1200" y="324">escreve (latências)</text>
+  <path class="a" d="M1420,290 V330 H1100 V358"/><text class="lbl" x="1200" y="324">escreve/lê</text>
   <path class="a" d="M625,480 V395 H798"/><text class="lbl" x="633" y="446">lê (cópia)</text>
   <!-- log -->
   <path class="a" d="M745,540 H998"/><text class="lbl" x="840" y="532">imprime</text>
