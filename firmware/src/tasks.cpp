@@ -11,6 +11,7 @@
 #include "model.h"
 #include "model_params.h"
 #include "ring.h"
+#include "runtime_params.h"
 #include "stats.h"
 
 // =============================================================================================
@@ -33,9 +34,45 @@ static SemaphoreHandle_t stats_mutex;
 
 static SystemStats g_stats;   // protegido por stats_mutex
 static SystemStats g_snap;    // cópia local de T4 (fora do mutex)
+
+// Parâmetros ajustáveis por comando de serial (GATE/THR/VOTE/MON) e o anel de janelas do monitor.
+// Ambos protegidos por stats_mutex (mesma regra: nunca junto com log_mutex). Só em RAM.
+static RuntimeParams g_params;
+struct LiveRec {
+  uint32_t win;
+  float rms_db, prob;
+  int8_t pos, votes, alert;
+};
+#define LIVE_RING 16                       // ~0,5 s de janelas; T4 drena a cada 100 ms
+static LiveRec g_live[LIVE_RING];          // stats_mutex
+static uint32_t g_live_head = 0, g_live_tail = 0, g_live_dropped = 0;  // stats_mutex
+
+static void live_push(const LiveRec& r) {   // chamar com stats_mutex tomado
+  if (g_live_head - g_live_tail >= LIVE_RING) {   // T4 atrasada: descarta a mais antiga
+    g_live_tail++;
+    g_live_dropped++;
+  }
+  g_live[g_live_head % LIVE_RING] = r;
+  g_live_head++;
+}
+
+static int live_drain(LiveRec* out) {         // chamar com stats_mutex tomado
+  int n = 0;
+  while (g_live_tail != g_live_head) out[n++] = g_live[g_live_tail++ % LIVE_RING];
+  return n;
+}
 static TaskHandle_t h_t1, h_t2, h_t3, h_t4;
 
 static inline int64_t now_us() { return esp_timer_get_time(); }
+
+// Valores iniciais dos parâmetros de runtime: padrões gerados do treino + override de configuração
+// (LIVE_PROB_THRESHOLD, board_config.h) no firmware de produção.
+static void init_params(RuntimeParams* p) {
+  params_defaults(p);
+#ifdef LIVE_PROB_THRESHOLD
+  p->thr = LIVE_PROB_THRESHOLD;
+#endif
+}
 
 // ---- helpers de mutex (sempre com timeout; falha vira contador) ------------------------------
 static bool take(SemaphoreHandle_t m) {
@@ -180,6 +217,8 @@ static void t3_anomaly_detect(void*) {
   FeatureMsg m;
   DecisionState ds;
   decision_reset(&ds);
+  RuntimeParams rp;          // cópia local dos parâmetros; atualizada a cada janela
+  init_params(&rp);
   for (;;) {
     const BaseType_t got = xQueueReceive(feature_q, &m, pdMS_TO_TICKS(20));
     alert_update((uint32_t)(now_us() / 1000));
@@ -189,17 +228,23 @@ static void t3_anomaly_detect(void*) {
     if (m.flags & FM_CLIP_START) decision_reset(&ds);
 
     if (!(m.flags & FM_NOWINDOW)) {
+      // Parâmetros atuais (podem ter mudado por comando). Se o mutex não vier, usa a última cópia.
+      if (take(stats_mutex)) {
+        rp = g_params;
+        xSemaphoreGive(stats_mutex);
+      }
       // --- gate + modelo + decisão ---
       float prob = -1.0f;
       bool pos = false;
-      const bool gated = m.rms_db < DSP_RMS_GATE_DB;
+      const bool gated = m.rms_db < rp.gate_db;
       if (!gated) {
         prob = model_predict(m.feat);
-        pos = prob >= PROB_THRESHOLD;
+        pos = prob >= rp.thr;
       }
       const uint32_t now_ms = (uint32_t)(t_recv / 1000);
       int64_t first_pos_us = 0;
-      const bool alert = decision_update(&ds, pos, now_ms, m.t_block_ready_us, alert_suppressed(now_ms), &first_pos_us);
+      const bool alert = decision_update(&ds, pos, now_ms, m.t_block_ready_us, alert_suppressed(now_ms), &first_pos_us,
+                                          rp.vote_n, rp.vote_m);
       if (alert) alert_trigger(now_ms);
       const int64_t t_end = now_us();
 
@@ -209,6 +254,7 @@ static void t3_anomaly_detect(void*) {
       const uint32_t t_infer = (uint32_t)(t_end - t_recv);
       const uint32_t t_total = (uint32_t)(t_end - m.t_block_ready_us);
       const uint32_t t_decision = alert ? (uint32_t)(t_end - first_pos_us) : 0;
+      const int votes = decision_votes(&ds, rp.vote_m);
 
       if (take(stats_mutex)) {
         lat_add(&g_stats.lat[LAT_SCHED], t_sched);
@@ -222,6 +268,7 @@ static void t3_anomaly_detect(void*) {
           g_stats.alerts++;
           lat_add(&g_stats.lat[LAT_DECISION], t_decision);
         }
+        if (rp.mon) live_push(LiveRec{m.window_id, m.rms_db, prob, (int8_t)(pos ? 1 : 0), (int8_t)votes, (int8_t)(alert ? 1 : 0)});
         xSemaphoreGive(stats_mutex);
       }
 #if AUDIO_SOURCE_SERIAL
@@ -245,41 +292,124 @@ static void t3_anomaly_detect(void*) {
 }
 
 // =============================================================================================
-// T4 — monitor (prioridade 1, core 1): a cada 5 s copia as estatísticas sob mutex e imprime.
-// Copiar e soltar o mutex ANTES de imprimir mantém a seção crítica curta (T2/T3 esperam pouco).
+// T4 — monitor (prioridade 1, core 1). A cada 100 ms: (1) lê comandos da serial (só no firmware de
+// produção), (2) se MON=1 imprime as janelas novas (linha "M,..."), (3) a cada 5 s (ou por STATS)
+// copia as estatísticas sob mutex, solta o mutex e só então imprime. Copiar e soltar ANTES de
+// imprimir mantém a seção crítica curta (T2/T3 esperam pouco). Nenhum mutex é segurado junto com outro.
 // =============================================================================================
-static void t4_monitor(void*) {
-  static uint32_t scratch[LAT_SAMPLES];
-  for (;;) {
-    vTaskDelay(pdMS_TO_TICKS(STATS_PERIOD_MS));
+#define MONITOR_TICK_MS 100
+
+static void print_stats(uint32_t* scratch) {
+  RuntimeParams rp;
+  if (take(stats_mutex)) {
+    memcpy(&g_snap, &g_stats, sizeof g_snap);
+    rp = g_params;
+    xSemaphoreGive(stats_mutex);
+  } else {
+    return;
+  }
+  serial_log("# t=%lus blocks=%u win=%u pos=%u gated=%u alerts=%u overruns=%u drops=%u torn=%u mtx_to=%u\n",
+             (unsigned long)(millis() / 1000), (unsigned)g_snap.blocks, (unsigned)g_snap.windows,
+             (unsigned)g_snap.windows_pos, (unsigned)g_snap.windows_gated, (unsigned)g_snap.alerts,
+             (unsigned)g_overruns.load(), (unsigned)g_snap.queue_drops, (unsigned)g_snap.torn_reads,
+             (unsigned)g_mutex_timeouts.load());
+  for (int k = 0; k < LAT_COUNT; k++) {
+    const LatStat& L = g_snap.lat[k];
+    if (!L.count) continue;
+    serial_log("# %-10s n=%u mean=%uus p50=%uus p95=%uus max=%uus\n", LAT_NAMES[k], (unsigned)L.count,
+               (unsigned)(L.sum_us / L.count), (unsigned)lat_percentile(L, 50, scratch),
+               (unsigned)lat_percentile(L, 95, scratch), (unsigned)L.max_us);
+  }
+  serial_log("# stack livre (bytes) T1=%u T2=%u T3=%u T4=%u\n", (unsigned)uxTaskGetStackHighWaterMark(h_t1),
+             (unsigned)uxTaskGetStackHighWaterMark(h_t2), (unsigned)uxTaskGetStackHighWaterMark(h_t3),
+             (unsigned)uxTaskGetStackHighWaterMark(h_t4));
+  serial_log("P,%.1f,%.3f,%d,%d,%d\n", (double)rp.gate_db, (double)rp.thr, rp.vote_n, rp.vote_m, rp.mon ? 1 : 0);
+  log_S_line();
+}
+
+#if !AUDIO_SOURCE_SERIAL
+// Interpreta uma linha de comando. Parâmetros mudam sob stats_mutex; a resposta sai pelo log_mutex
+// DEPOIS de soltar o stats_mutex (nunca os dois juntos).
+static void handle_command(const char* line, bool* want_stats) {
+  RuntimeParams tmp;
+  char reply[96];
+  if (!take(stats_mutex)) {
+    serial_log("ERR ocupado (stats_mutex)\n");
+    return;
+  }
+  tmp = g_params;
+  xSemaphoreGive(stats_mutex);
+  const CmdKind k = cmd_execute(line, &tmp, reply, sizeof reply);
+  if (k == CMD_SET) {
     if (take(stats_mutex)) {
-      memcpy(&g_snap, &g_stats, sizeof g_snap);
+      g_params = tmp;
       xSemaphoreGive(stats_mutex);
     } else {
-      continue;
+      strcpy(reply, "ERR ocupado (stats_mutex)");
     }
-    serial_log("# t=%lus blocks=%u win=%u pos=%u gated=%u alerts=%u overruns=%u drops=%u torn=%u mtx_to=%u\n",
-               (unsigned long)(millis() / 1000), (unsigned)g_snap.blocks, (unsigned)g_snap.windows,
-               (unsigned)g_snap.windows_pos, (unsigned)g_snap.windows_gated, (unsigned)g_snap.alerts,
-               (unsigned)g_overruns.load(), (unsigned)g_snap.queue_drops, (unsigned)g_snap.torn_reads,
-               (unsigned)g_mutex_timeouts.load());
-    for (int k = 0; k < LAT_COUNT; k++) {
-      const LatStat& L = g_snap.lat[k];
-      if (!L.count) continue;
-      serial_log("# %-10s n=%u mean=%uus p50=%uus p95=%uus max=%uus\n", LAT_NAMES[k], (unsigned)L.count,
-                 (unsigned)(L.sum_us / L.count), (unsigned)lat_percentile(L, 50, scratch),
-                 (unsigned)lat_percentile(L, 95, scratch), (unsigned)L.max_us);
+  }
+  if (k == CMD_STATS) *want_stats = true;
+  if (reply[0]) serial_log("%s\n", reply);
+}
+
+static void poll_serial_commands(bool* want_stats) {
+  static char buf[64];
+  static int len = 0;
+  static bool overflow = false;
+  while (Serial.available() > 0) {
+    const int c = Serial.read();
+    if (c == '\n') {
+      if (overflow) {
+        serial_log("ERR linha muito longa\n");
+      } else {
+        buf[len] = 0;
+        handle_command(buf, want_stats);
+      }
+      len = 0;
+      overflow = false;
+    } else if (c != '\r' && c >= 0) {
+      if (len < (int)sizeof buf - 1) buf[len++] = (char)c;
+      else overflow = true;
     }
-    serial_log("# stack livre (bytes) T1=%u T2=%u T3=%u T4=%u\n", (unsigned)uxTaskGetStackHighWaterMark(h_t1),
-               (unsigned)uxTaskGetStackHighWaterMark(h_t2), (unsigned)uxTaskGetStackHighWaterMark(h_t3),
-               (unsigned)uxTaskGetStackHighWaterMark(h_t4));
-    log_S_line();
+  }
+}
+#endif
+
+static void t4_monitor(void*) {
+  static uint32_t scratch[LAT_SAMPLES];
+  static LiveRec batch[LIVE_RING];
+  uint32_t next_stats_ms = millis() + STATS_PERIOD_MS;
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(MONITOR_TICK_MS));
+    bool want_stats = false;
+#if !AUDIO_SOURCE_SERIAL
+    poll_serial_commands(&want_stats);
+#endif
+    int nb = 0;
+    bool mon = false;
+    if (take(stats_mutex)) {           // drena sempre (descarta se MON=0) para o anel não ficar velho
+      mon = g_params.mon;
+      nb = live_drain(batch);
+      xSemaphoreGive(stats_mutex);
+    }
+    if (mon) {
+      // uma linha por janela: M,<janela>,<rms_db>,<prob (-1 = abaixo do gate)>,<pos>,<votos nas últimas M>,<alerta>
+      for (int i = 0; i < nb; i++)
+        serial_log("M,%u,%.1f,%.3f,%d,%d,%d\n", (unsigned)batch[i].win, (double)batch[i].rms_db, (double)batch[i].prob,
+                   batch[i].pos, batch[i].votes, batch[i].alert);
+    }
+    const uint32_t now = millis();
+    if (want_stats || (int32_t)(now - next_stats_ms) >= 0) {
+      next_stats_ms = now + STATS_PERIOD_MS;
+      print_stats(scratch);
+    }
   }
 }
 
 void rtos_start() {
   stats_init();
   memset(&g_stats, 0, sizeof g_stats);
+  init_params(&g_params);
   ring_init(&g_ring);
   alert_init();
   if (!audio_init()) {

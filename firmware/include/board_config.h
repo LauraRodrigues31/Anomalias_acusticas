@@ -14,7 +14,7 @@
 #define I2S_DIN_PIN 33           // INMP441 SD (DOUT)
 #endif
 #ifndef LED_PIN
-#define LED_PIN 2                // LED da placa; LED externo com resistor de 220 ohm
+#define LED_PIN 13               // LED da placa; LED externo com resistor de 220 ohm
 #endif
 #ifndef BUZZER_PIN
 #define BUZZER_PIN 27
@@ -31,7 +31,7 @@
 #define I2S_SAMPLE_SHIFT 16      // 32 -> 16 bits; ajuste se o sinal estiver fraco/saturado
 #endif
 #ifndef I2S_CHANNEL_SWAP
-#define I2S_CHANNEL_SWAP 0       // 0 = canal esquerdo, 1 = direito (quirk do driver I2S do ESP32)
+#define I2S_CHANNEL_SWAP 1       // 0 = canal esquerdo, 1 = direito (quirk do driver I2S do ESP32)
 #endif
 
 // ---- RTOS ----
@@ -53,10 +53,20 @@
 #define STACK_T1 4096
 #define STACK_T2 4096
 #define STACK_T3 4096
-#define STACK_T4 4096
+#define STACK_T4 6144   // T4 formata floats e trata comandos
 
 #ifndef AUDIO_SOURCE_SERIAL
 #define AUDIO_SOURCE_SERIAL 0    // 1 = áudio injetado pela serial (esp32-test)
+#endif
+
+// ---- Limiar de decisão AO VIVO (override de configuração; NÃO altera o model_params.h do treino) ----
+// O modelo treinado usa PROB_THRESHOLD = 0,9 (escolhido na validação; é o número das métricas offline).
+// No firmware de PRODUÇÃO (esp32dev) o valor inicial dos parâmetros de runtime passa a ser este, calibrado AO VIVO
+// com tests/calibrate.py (docs/decisions.md, D11). Vale só p/ os sons e a posição da calibração. Voto (6 de 8) e gate
+// (-50 dBFS) continuam os de dsp_config.h. O modo esp32-test (AUDIO_SOURCE_SERIAL=1) NÃO usa o override, para
+// reproduzir as métricas offline. Para desligar: -DLIVE_PROB_THRESHOLD=PROB_THRESHOLD ou apague este bloco.
+#if !AUDIO_SOURCE_SERIAL && !defined(LIVE_PROB_THRESHOLD)
+#define LIVE_PROB_THRESHOLD 0.99f
 #endif
 #ifndef BOARD_SELFTEST
 #define BOARD_SELFTEST 0

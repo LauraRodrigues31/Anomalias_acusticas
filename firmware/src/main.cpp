@@ -23,6 +23,9 @@ void setup() {
 #if AUDIO_SOURCE_SERIAL
   Serial.println("# modo TESTE: audio injetado pela serial");
 #endif
+#ifdef LIVE_PROB_THRESHOLD
+  Serial.printf("# limiar ao vivo (override calibrado) = %.3f; treino = %.3f\n", (double)LIVE_PROB_THRESHOLD, (double)PROB_THRESHOLD);
+#endif
   rtos_start();
   vTaskDelete(NULL);  // o loopTask do Arduino não é mais necessário
 #endif
