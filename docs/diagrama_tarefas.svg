@@ -1,0 +1,193 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1730 880" width="1730" height="880" font-family="DejaVu Sans, Arial, sans-serif">
+  <title>Diagrama de tarefas RTOS — detector de alarme de fumaça (ESP32 + FreeRTOS)</title>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#333"/></marker>
+    <marker id="arb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b3261e"/></marker>
+    <style>
+      .t { font-size: 12px; fill: #1a1a1a; }
+      .s { font-size: 10.5px; fill: #333; }
+      .h { font-size: 13.5px; font-weight: bold; fill: #1a1a1a; }
+      .lbl { font-size: 10.5px; fill: #333; }
+      .red { font-size: 10.5px; fill: #b3261e; }
+      .task { fill: #dbe9ff; stroke: #2b5cab; stroke-width: 2; }
+      .sync { fill: #fff2cc; stroke: #a67c00; stroke-width: 2; }
+      .mtx { fill: #f9d9d6; stroke: #b3261e; stroke-width: 2; }
+      .hw { fill: #e6f4e6; stroke: #2e7d32; stroke-width: 2; }
+      .note { fill: #f3f3f3; stroke: #888; stroke-width: 1; }
+      .a { stroke: #333; stroke-width: 2; fill: none; marker-end: url(#ar); }
+      .ad { stroke: #333; stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; marker-end: url(#ar); }
+      .fb { stroke: #b3261e; stroke-width: 2; fill: none; stroke-dasharray: 7 4; marker-end: url(#arb); }
+      .race { fill: #b3261e; }
+      .rn { font-size: 12px; font-weight: bold; fill: #fff; }
+    </style>
+  </defs>
+  <rect width="1730" height="880" fill="#ffffff"/>
+  <text x="20" y="30" font-size="20" font-weight="bold" fill="#1a1a1a">Diagrama de tarefas RTOS — detector de anomalias acústicas (alarme de fumaça)</text>
+  <text x="20" y="50" class="s">ESP32 (2 núcleos) + FreeRTOS · 16 kHz · janela de 1024 amostras (64 ms) · passo 512 (32 ms) · número de prioridade maior = mais urgente</text>
+
+  <!-- realimentação buzzer -> microfone (por cima) -->
+  <path class="fb" d="M1695,245 H1712 V92 H90 V128"/>
+  <text class="red" x="110" y="84">realimentação acústica buzzer → microfone (condição de corrida 4): janelas ignoradas durante o toque + 300 ms, e cooldown de 3 s após cada alerta</text>
+  <circle class="race" cx="1000" cy="92" r="11"/><text class="rn" x="996" y="96">4</text>
+
+  <!-- Hardware de entrada -->
+  <rect class="hw" x="20" y="130" width="140" height="140" rx="8"/>
+  <text class="h" x="30" y="152">INMP441</text>
+  <text class="s" x="30" y="170">microfone I2S</text>
+  <text class="s" x="30" y="186">BCLK 26 · WS 25</text>
+  <text class="s" x="30" y="202">SD 33 · 16 kHz</text>
+  <text class="s" x="30" y="222">DMA do I2S:</text>
+  <text class="s" x="30" y="238">8 buffers × 256</text>
+  <text class="s" x="30" y="254">quadros</text>
+
+  <!-- T1 -->
+  <rect class="task" x="215" y="110" width="220" height="180" rx="8"/>
+  <text class="h" x="227" y="134">T1 audio_capture</text>
+  <text class="t" x="227" y="152">prioridade 5 · core 0</text>
+  <text class="s" x="227" y="174">i2s_read bloqueante (DMA acorda)</text>
+  <text class="s" x="227" y="190">int32 → int16 (SHIFT / SWAP)</text>
+  <text class="s" x="227" y="206">t_block_ready = esp_timer agora</text>
+  <text class="s" x="227" y="222">ring_write + xSemaphoreGive</text>
+  <text class="s" x="227" y="246" font-weight="bold">sem Serial.print e sem mutex</text>
+  <text class="s" x="227" y="262">(nunca bloqueia em lock)</text>
+
+  <!-- ring + semáforo -->
+  <rect class="sync" x="505" y="110" width="240" height="100" rx="8"/>
+  <text class="h" x="517" y="132">g_ring — buffer circular</text>
+  <text class="s" x="517" y="150">8 blocos × 512 int16 (≈ 8 KB), estático</text>
+  <text class="s" x="517" y="166">produtor único (T1), consumidor único (T2)</text>
+  <text class="s" x="517" y="182">seq[slot] e wr_id atômicos (seqlock)</text>
+  <text class="s" x="517" y="198">+ t_ready e metadados por bloco</text>
+
+  <rect class="sync" x="505" y="228" width="240" height="72" rx="8"/>
+  <text class="h" x="517" y="250">blocks_ready</text>
+  <text class="s" x="517" y="268">semáforo de CONTAGEM (máx. 8)</text>
+  <text class="s" x="517" y="284">T1 dá 1 por bloco · T2 pega 1</text>
+
+  <!-- T2 -->
+  <rect class="task" x="815" y="110" width="230" height="180" rx="8"/>
+  <text class="h" x="827" y="134">T2 feature_extract</text>
+  <text class="t" x="827" y="152">prioridade 3 · core 1</text>
+  <text class="s" x="827" y="174">Take(blocks_ready) bloqueante</text>
+  <text class="s" x="827" y="190">ring_read (confere seq antes/depois)</text>
+  <text class="s" x="827" y="206">janela = 2 blocos consecutivos (1024)</text>
+  <text class="s" x="827" y="222">DC · RMS · Hann · FFT · 4 features</text>
+  <text class="s" x="827" y="238">t_feat_start / t_feat_done</text>
+  <text class="s" x="827" y="254">xQueueSend(feature_q, timeout 0)</text>
+
+  <!-- fila -->
+  <rect class="sync" x="1115" y="150" width="150" height="100" rx="8"/>
+  <text class="h" x="1127" y="172">feature_q</text>
+  <text class="s" x="1127" y="190">fila, profundidade 8</text>
+  <text class="s" x="1127" y="206">FeatureMsg copiado:</text>
+  <text class="s" x="1127" y="222">id, 3 tempos, rms,</text>
+  <text class="s" x="1127" y="238">4 features, flags</text>
+
+  <!-- T3 -->
+  <rect class="task" x="1335" y="110" width="230" height="180" rx="8"/>
+  <text class="h" x="1347" y="134">T3 anomaly_detect</text>
+  <text class="t" x="1347" y="152">prioridade 2 · core 1</text>
+  <text class="s" x="1347" y="174">xQueueReceive (timeout 20 ms)</text>
+  <text class="s" x="1347" y="190">gate de RMS → modelo (p ≥ limiar)</text>
+  <text class="s" x="1347" y="206">regra N de M + cooldown de 3 s</text>
+  <text class="s" x="1347" y="222">t_recv / t_end → latências</text>
+  <text class="s" x="1347" y="238">liga LED/buzzer; apaga no prazo</text>
+  <text class="s" x="1347" y="254">ignora janelas com buzzer tocando</text>
+
+  <!-- saídas -->
+  <rect class="hw" x="1595" y="120" width="100" height="60" rx="8"/>
+  <text class="h" x="1607" y="146">LED</text>
+  <text class="s" x="1607" y="164">GPIO 2</text>
+  <rect class="hw" x="1595" y="210" width="100" height="70" rx="8"/>
+  <text class="h" x="1607" y="234">Buzzer</text>
+  <text class="s" x="1607" y="250">GPIO 27</text>
+  <text class="s" x="1607" y="266">(opcional)</text>
+
+  <!-- T4 -->
+  <rect class="task" x="505" y="480" width="240" height="130" rx="8"/>
+  <text class="h" x="517" y="504">T4 monitor</text>
+  <text class="t" x="517" y="522">prioridade 1 · core 1</text>
+  <text class="s" x="517" y="544">a cada 5 s: copia SystemStats (sob mutex),</text>
+  <text class="s" x="517" y="560">solta o mutex e só então imprime:</text>
+  <text class="s" x="517" y="576">média, p50, p95, máx, contadores e</text>
+  <text class="s" x="517" y="592">stack high-water marks (linha S)</text>
+
+  <!-- mutexes -->
+  <rect class="mtx" x="800" y="360" width="400" height="70" rx="8"/>
+  <text class="h" x="812" y="384">stats_mutex → SystemStats</text>
+  <text class="s" x="812" y="402">contadores + acumuladores/amostras de latência</text>
+  <text class="s" x="812" y="418">escrita: T2 e T3 · leitura: T4 · herança de prioridade</text>
+
+  <rect class="mtx" x="1000" y="500" width="230" height="70" rx="8"/>
+  <text class="h" x="1012" y="524">log_mutex</text>
+  <text class="s" x="1012" y="542">serializa a Serial e o buffer</text>
+  <text class="s" x="1012" y="558">de formatação (T3 e T4)</text>
+
+  <rect class="hw" x="1290" y="510" width="170" height="50" rx="8"/>
+  <text class="h" x="1302" y="532">Serial (UART0)</text>
+  <text class="s" x="1302" y="548">921600 baud → PC</text>
+
+  <!-- atômicos -->
+  <rect class="note" x="215" y="345" width="220" height="72" rx="6"/>
+  <text class="h" x="225" y="366">Atômicos (sem mutex)</text>
+  <text class="s" x="225" y="384">g_overruns (escrito por T1)</text>
+  <text class="s" x="225" y="400">g_mutex_timeouts (qualquer tarefa)</text>
+
+  <!-- setas principais -->
+  <path class="a" d="M160,190 H213"/><text class="lbl" x="164" y="182">DMA/ISR</text>
+  <path class="a" d="M435,150 H503"/><text class="lbl" x="441" y="142">ring_write</text>
+  <path class="a" d="M435,262 H503"/><text class="lbl" x="458" y="254">Give</text>
+  <path class="a" d="M745,150 H813"/><text class="lbl" x="752" y="142">ring_read</text>
+  <path class="a" d="M745,264 H779 Q787,264 787,256 V222 H813"/><text class="lbl" x="752" y="282">Take</text>
+  <path class="a" d="M1045,200 H1113"/><text class="lbl" x="1064" y="192">Send</text>
+  <path class="a" d="M1265,200 H1333"/><text class="lbl" x="1279" y="192">Receive</text>
+  <path class="a" d="M1565,150 H1593"/>
+  <path class="a" d="M1565,245 H1593"/>
+
+  <!-- stats -->
+  <path class="a" d="M900,290 V358"/><text class="lbl" x="908" y="330">escreve</text>
+  <path class="a" d="M1420,290 V330 H1100 V358"/><text class="lbl" x="1200" y="324">escreve (latências)</text>
+  <path class="a" d="M625,480 V395 H798"/><text class="lbl" x="633" y="446">lê (cópia)</text>
+  <!-- log -->
+  <path class="a" d="M745,540 H998"/><text class="lbl" x="840" y="532">imprime</text>
+  <path class="a" d="M1500,290 V470 H1115 V498"/><text class="lbl" x="1330" y="462">imprime (linhas A, W, DONE)</text>
+  <path class="a" d="M1230,535 H1288"/>
+  <path class="ad" d="M325,290 V343"/>
+
+  <!-- avisos de falha -->
+  <text class="red" x="505" y="330">Give falha (contagem = 8) ⇒ OVERRUN: g_overruns++</text>
+  <text class="red" x="505" y="345">e T1 sobrescreve o bloco mais antigo; T2 detecta</text>
+  <text class="red" x="505" y="360">pelo seq[] e descarta leitura rasgada (torn_reads).</text>
+  <text class="red" x="1115" y="272">fila cheia ⇒ T2 descarta a mensagem</text>
+  <text class="red" x="1115" y="286">queue_drops++ (T2 nunca espera T3)</text>
+
+  <!-- marcadores das condições de corrida -->
+  <circle class="race" cx="735" cy="215" r="11"/><text class="rn" x="731" y="219">1</text>
+  <circle class="race" cx="786" cy="378" r="11"/><text class="rn" x="782" y="382">3</text>
+  <circle class="race" cx="985" cy="518" r="11"/><text class="rn" x="981" y="522">2</text>
+
+  <!-- latências -->
+  <rect class="note" x="20" y="640" width="470" height="100" rx="6"/>
+  <text class="h" x="30" y="662">Latências medidas (esp_timer_get_time, em µs)</text>
+  <text class="s" x="30" y="680">t_block_ready (T1) → t_sched → t_feat_start (T2) → t_feat</text>
+  <text class="s" x="30" y="696">→ t_feat_done → t_queue → t_recv (T3) → t_infer → t_end</text>
+  <text class="s" x="30" y="712">t_total = t_end − t_block_ready ·  t_decision = alerta − 1ª</text>
+  <text class="s" x="30" y="728">janela positiva do voto vencedor</text>
+
+  <!-- legenda -->
+  <rect x="520" y="640" width="260" height="18" class="task"/><text class="s" x="528" y="653">Tarefa FreeRTOS (prioridade · núcleo)</text>
+  <rect x="520" y="664" width="260" height="18" class="sync"/><text class="s" x="528" y="677">Fila / semáforo / buffer</text>
+  <rect x="520" y="688" width="260" height="18" class="mtx"/><text class="s" x="528" y="701">Mutex (com herança de prioridade)</text>
+  <rect x="520" y="712" width="260" height="18" class="hw"/><text class="s" x="528" y="725">Hardware / periférico</text>
+  <line x1="810" y1="650" x2="850" y2="650" class="a"/><text class="s" x="858" y="654">fluxo de dados / sincronização</text>
+  <line x1="810" y1="674" x2="850" y2="674" class="ad"/><text class="s" x="858" y="678">contador atômico</text>
+  <line x1="810" y1="698" x2="850" y2="698" class="fb"/><text class="s" x="858" y="702">realimentação acústica (risco)</text>
+  <circle class="race" cx="820" cy="722" r="9"/><text class="s" x="858" y="726">nº da condição de corrida (ver abaixo)</text>
+
+  <rect class="note" x="20" y="765" width="1690" height="100" rx="6"/>
+  <text class="h" x="30" y="785">Condições de corrida e como foram resolvidas</text>
+  <text class="s" x="30" y="803">1) T1 escreve enquanto T2 lê o ring: índices com dono único + semáforo de contagem; no overrun, o seq[] por slot (seqlock) impede o uso de dado rasgado.</text>
+  <text class="s" x="30" y="819">2) Vários escritores na Serial (T3 e T4): log_mutex, com timeout de 50 ms (falha ⇒ mutex_timeouts++).    3) Estatísticas escritas por T2/T3 e lidas por T4: stats_mutex.</text>
+  <text class="s" x="30" y="835">4) Realimentação buzzer → microfone: supressão das janelas durante o toque + 300 ms e cooldown.    Regra anti-deadlock: nenhuma tarefa segura os dois mutexes ao mesmo tempo (se um dia for preciso: ordem fixa stats → log).</text>
+  <text class="s" x="30" y="851">Sem alocação dinâmica após a inicialização · sem espera ocupada (toda espera é bloqueante) · toda tomada de mutex tem timeout.</text>
+</svg>
