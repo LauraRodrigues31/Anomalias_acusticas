@@ -10,3 +10,4 @@ matplotlib
 pyserial
 huggingface_hub
 platformio
+requests
