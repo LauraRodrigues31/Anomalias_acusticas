@@ -1,6 +1,6 @@
 # Checklist de hardware (em ordem de execução)
 
-> Versão final. **Nenhum número de latência ou de acurácia ao vivo deste projeto foi medido no ESP32 ainda**: tudo que depende da placa está marcado `PENDENTE (medir no hardware)`. O firmware já contém o **modelo treinado** (limiar 0,9, voto 6 de 8).
+> Versão final. **Latência e robustez do ESP32 foram medidas em 21/09/2026** (tabela da seção 5; execução de ≈ 28,6 min em silêncio com alarmes ocasionais, **não** o pior caso contínuo). Há só uma **amostra pequena** de resultados ao vivo (`docs/relatorio_tecnico.md`, seção 7); a tabela de 10 repetições (seção 6) e a acurácia ao vivo sistemática seguem `PENDENTE (medir no hardware)`. O firmware já contém o **modelo treinado** (limiar 0,9, voto 6 de 8).
 
 ## 1. Fiação (ESP32 DevKit ↔ INMP441)
 
@@ -75,7 +75,7 @@ python tests/calibrate.py --analisar docs/results/calibracao_<data>.csv   # refa
 
 Ela pede, um por vez, silencio, fala, palma_mesa, sirene, despertador, toque e alarme_fumaca ("toque X e aperte Enter"), coleta por `MON 1`, e imprime a probabilidade por rótulo e quantos ALERTAS cada combinação de `THR` {0,90; 0,95; 0,98; 0,99; 0,995} e `VOTE` {6/8, 7/8, 8/8, 10/12, 12/16} teria disparado. Recomenda a que mantém o alarme e minimiza os disparos; se nenhuma separa, diz isso e mostra a sobreposição das probabilidades. Para aplicar: `THR <p>` e `VOTE <n> <m>` no monitor serial (ou `--apply`, que só aplica se separar). Testada apenas contra o dispositivo simulado.
 
-Cada coleta imprime p50/p95/máx de `rms_db` e da probabilidade e a fração de janelas acima do limiar; `--suggest` propõe `GATE`, `THR` e `VOTE` que não disparam nos sons negativos coletados e disparam no alarme (e avisa se isso não for possível). Referência: `RMS_GATE_DB` deve ficar ~6 dB acima do p95 do silêncio e bem abaixo do alarme. Para tornar permanente, o gate vem de `ml/config.py` (`python -m ml.gen_headers`) e limiar/voto do treino; **não** ajuste olhando o conjunto de teste. Valores atuais: limiar de treino `PROB_THRESHOLD = 0,9` (offline), **limiar ao vivo 0,99** no `esp32dev` (override `LIVE_PROB_THRESHOLD` em `board_config.h`, decisão D11), voto **6 de 8**, `RMS_GATE_DB = −50`. **PENDENTE (medir no hardware):** as probabilidades reais do alarme do celular, e se a sugestão funciona na sua placa (testada só contra um dispositivo simulado).
+Cada coleta imprime p50/p95/máx de `rms_db` e da probabilidade e a fração de janelas acima do limiar; `--suggest` propõe `GATE`, `THR` e `VOTE` que não disparam nos sons negativos coletados e disparam no alarme (e avisa se isso não for possível). Referência: `RMS_GATE_DB` deve ficar ~6 dB acima do p95 do silêncio e bem abaixo do alarme. Para tornar permanente, o gate vem de `ml/config.py` (`python -m ml.gen_headers`) e limiar/voto do treino; **não** ajuste olhando o conjunto de teste. Valores atuais: limiar de treino `PROB_THRESHOLD = 0,9` (offline), **limiar ao vivo 0,99** no `esp32dev` (override `LIVE_PROB_THRESHOLD` em `board_config.h`, decisão D11), voto **6 de 8**, `RMS_GATE_DB = −50`. **Já feito ao vivo (21/09/2026):** a calibração de 20 s por som levou ao limiar **0,99** (`docs/decisions.md`, D11); o alarme chegou a probabilidade 0,998, ou seja, com folga estreita. **Ainda PENDENTE (medir no hardware):** repetir com outros volumes/distâncias/celulares e registrar as 10 repetições da seção 6.
 
 ## 5. Medir latência no hardware (preenche as tabelas do relatório)
 
@@ -86,15 +86,29 @@ cd ..
 python tests/run_test.py --target serial:/dev/ttyUSB0 --split val --max-per-type 10   # troque a porta
 ```
 
-O resultado (CSV/JSON/PNG, carimbado com `esp32`) vai para `docs/results/`. O lado serial do harness **nunca rodou numa placa** (só contra `tests/fake_esp32.py`): se algo falhar, veja `docs/serial_protocol.md`. Sem `--fast` o envio é em tempo real (um clipe de 5 s leva ~5 s). Até lá: **PENDENTE (medir no hardware)**.
-Também dá para ler as estatísticas a cada 5 s no monitor serial do `esp32dev` (linhas `# t_sched ...`, `# t_feat ...`, `S,...`).
+O resultado (CSV/JSON/PNG, carimbado com `esp32`) vai para `docs/results/`. O lado serial do harness **nunca rodou numa placa** (só contra `tests/fake_esp32.py`): se algo falhar, veja `docs/serial_protocol.md`. Sem `--fast` o envio é em tempo real (um clipe de 5 s leva ~5 s). O alvo serial do harness segue **não validado**; os números de latência abaixo vieram da linha de estatísticas do T4 no monitor serial do `esp32dev` (a cada 5 s ou por `STATS`).
+
+**Medido no ESP32-D0WD-V3, firmware `esp32dev`, 21/09/2026, linha `# t=1714s` (n = 53.570 janelas, ≈ 28,6 min; silêncio com alarmes ocasionais, não o pior caso contínuo):**
+
+| Etapa | média (µs) | p50 | p95 | máx |
+|---|---|---|---|---|
+| `t_sched` | 22 | 22 | 22 | 40 |
+| `t_feat` | 1379 | 1377 | 1377 | 1603 |
+| `t_queue` | 39 | 40 | 40 | 49 |
+| `t_infer` | 10 | 9 | 11 | 153 |
+| `t_total` (por janela) | 1452 | 1448 | 1450 | 1818 |
+| `t_decision` (n = 25 alertas) | 178126 | 161558 | 225471 | 225471 |
+
+`t_total` é o **processamento por janela** e **não** inclui a duração da janela (64 ms) nem o passo de 32 ms; compare-o com o orçamento de 32 ms (≈ 4,5% na média, ≈ 5,7% no máximo observado). Contadores: `overruns` = 0, `queue_drops` = 0, `torn_reads` = 0, `mutex_timeouts` = 0. Stack livre mínima (bytes): T1 = 3396, T2 = 3404, T3 = 2500, T4 = 4228. p50/p95 do T4 são sobre as últimas 512 janelas; média e máx, sobre todas.
+
+Registro do bring-up: foi preciso **inverter `I2S_CHANNEL_SWAP` (0 → 1)**, e a gravação foi feita a **115200 baud** (`upload_speed`).
 
 ## 6. Roteiro de ensaio da demo (10 repetições)
 
 1. Gravar `esp32dev`; abrir o monitor serial (921600) e **salvar o log** (`pio device monitor -b 921600 | tee demo.log`).
 2. Tocar o alarme de fumaça (celular) a ~40 cm, 10 vezes; anotar na tabela abaixo se o LED acendeu e após quantos segundos.
 3. Fazer 10 tentativas de **falso alarme**: palma, fala, chaves, toque de celular, sirene.
-4. Anotar tudo. **PENDENTE (medir no hardware)**.
+4. Anotar tudo. **PENDENTE (medir no hardware)** para as 10 repetições. Já observado, de forma informal (amostra pequena, com pouco registro; ver `docs/relatorio_tecnico.md`, seção 7): o alarme de fumaça foi tocado a partir de vídeos do YouTube em dois aparelhos (notebook: `demo_track.wav` com `aplay` e um vídeo; celular: teste final). No **celular** o LED acendeu, verificado **só visualmente** (sem log serial; número de repetições não registrado). Os tempos de decisão de ≈ 161 a 193 ms vêm de uma execução com log serial em que o **aparelho de origem do alarme NÃO foi registrado**. Distância de 30–50 cm **pretendida, não medida**. Com THR = 0,99, fala, palma, batida na mesa, despertador, toque e sirene não dispararam na calibração; folga estreita (alarme chegou a prob 0,998).
 
 | # | Estímulo | LED acendeu? | Atraso (s) | Observação |
 |---|---|---|---|---|
@@ -105,7 +119,7 @@ Também dá para ler as estatísticas a cada 5 s no monitor serial do `esp32dev`
 
 ## 7. O que preencher no relatório depois das medições reais
 
-- `docs/relatorio_tecnico.md`, seção *Análise de latência* (tabela 6.2): tabela com média/p50/p95/máx de `t_sched`, `t_feat`, `t_queue`, `t_infer`, `t_total`, `t_decision` (hoje `PENDENTE`).
+- `docs/relatorio_tecnico.md`, seção *Análise de latência* (tabela 6.2): **já preenchida** com a medição de 21/09/2026 (ver seção 5 deste arquivo); refazer se o firmware mudar ou para medir o pior caso contínuo.
 - Contadores `overruns`, `queue_drops`, `mutex_timeouts` e *stack high-water marks* (linha `S,...`).
 - Acurácia ao vivo (tabela do item 6) e comparação com a acurácia do teste offline.
 - Valores de `I2S_SAMPLE_SHIFT`, `I2S_CHANNEL_SWAP` e `RMS_GATE_DB` que funcionaram na sua placa.

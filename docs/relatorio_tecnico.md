@@ -2,7 +2,7 @@
 
 Aluna: Laura · Disciplina: Edge Computing (Inteli).
 
-> **Aviso de honestidade.** Todo número de **acurácia** abaixo vem de execuções reais no PC (conjuntos de validação/teste do dataset descrito na seção 4). Todo número de **latência do ESP32** está marcado `PENDENTE (medir no hardware)`: o firmware compila, mas ainda não foi gravado nem medido na placa. Os tempos do PC (seção 6.3) são rotulados "host; não representam o ESP32".
+> **Aviso de honestidade.** Todo número de **acurácia offline** (seção 5) vem de execuções reais no PC (validação/teste do dataset da seção 4). Os números de **latência e robustez do ESP32** (seção 6.2) são **medições reais** no ESP32-D0WD-V3 com o firmware `esp32dev`, em 21/09/2026, numa execução em silêncio com alarmes ocasionais (**não** o pior caso contínuo). Os resultados **ao vivo** (seção 7) são uma **amostra pequena**, sem intervalo de confiança. Os tempos do PC (seção 6.3) são rotulados "host; não representam o ESP32".
 
 ## 1. Aplicação prática e justificativa
 
@@ -101,24 +101,44 @@ Por janela (teste): precisão 95,4%, recall 88,0%, FPR 0,84%. Matriz de confusã
 
 ## 6. Análise de latência
 
-Metodologia e definições em `docs/latency_methodology.md`. Latência inerente da janela: **64 ms** (janela) e **32 ms** (passo), documentadas, não medidas. Requisito de tempo real: `t_sched + t_feat + t_queue + t_infer` bem abaixo de 32 ms.
+Metodologia e definições em `docs/latency_methodology.md`. Latência inerente da janela: **64 ms** (janela) e **32 ms** (passo), documentadas, não medidas. Requisito de tempo real: `t_sched + t_feat + t_queue + t_infer` bem abaixo de 32 ms (o passo entre janelas).
 
-### 6.1 Latência de projeto (não medida)
+### 6.1 Latência de projeto (consequência do desenho)
 
-Com N=6 de M=8, o voto exige pelo menos 6 janelas positivas; o alerta mais rápido possível ocorre 5 passos (160 ms) depois da primeira janela positiva, somado aos 64 ms iniciais da janela. Isto é consequência do desenho, confirmado no PC (`t_decision` mínimo = 160 ms em tempo de áudio).
+Com N=6 de M=8, o voto exige pelo menos 6 janelas positivas; o alerta mais rápido possível ocorre 5 passos (160 ms) depois da primeira janela positiva, somado aos 64 ms iniciais da janela. Isto é consequência do desenho, confirmado no PC (`t_decision` mínimo = 160 ms em tempo de áudio) e compatível com o que se mediu no ESP32 (`t_decision` p50 = 161.558 µs, seção 6.2).
 
-### 6.2 ESP32 (tabela a preencher com medições reais)
+### 6.2 ESP32: latência e robustez medidas (esp32dev, produção)
 
-| Etapa | média | p50 | p95 | máx |
+**Condições da medição (reais):** ESP32-D0WD-V3, firmware `esp32dev` (produção), 21/09/2026, valores lidos da linha `# t=1714s` do monitor serial (T4): **n = 53.570 janelas, ≈ 28,6 min**, em **silêncio com alarmes ocasionais**. **Não é o pior caso contínuo** (som constante, alarme sem pausa, log intenso).
+
+| Etapa | média (µs) | p50 | p95 | máx |
 |---|---|---|---|---|
-| `t_sched` | PENDENTE (medir no hardware) | PENDENTE | PENDENTE | PENDENTE |
-| `t_feat` | PENDENTE (medir no hardware) | PENDENTE | PENDENTE | PENDENTE |
-| `t_queue` | PENDENTE (medir no hardware) | PENDENTE | PENDENTE | PENDENTE |
-| `t_infer` | PENDENTE (medir no hardware) | PENDENTE | PENDENTE | PENDENTE |
-| `t_total` | PENDENTE (medir no hardware) | PENDENTE | PENDENTE | PENDENTE |
-| `t_decision` | PENDENTE (medir no hardware) | PENDENTE | PENDENTE | PENDENTE |
+| `t_sched` | 22 | 22 | 22 | 40 |
+| `t_feat` | 1379 | 1377 | 1377 | 1603 |
+| `t_queue` | 39 | 40 | 40 | 49 |
+| `t_infer` | 10 | 9 | 11 | 153 |
+| `t_total` | 1452 | 1448 | 1450 | 1818 |
+| `t_decision` (n = 25 alertas) | 178126 | 161558 | 225471 | 225471 |
 
-Contadores `overruns`, `queue_drops`, `mutex_timeouts` e *stack high-water marks*: **PENDENTE (medir no hardware)**. Uso de memória do build `esp32dev` (real, do compilador, medido **antes** de acrescentar os comandos de ajuste ao vivo; refazer com `pio run`): RAM 26,5% (≈ 87 kB de 320 kB), flash 22,7% (≈ 298 kB de 1,3 MB).
+- **`t_total` é o processamento por janela** (do bloco pronto até a decisão/LED). **Não inclui** a duração da janela (64 ms) **nem** o passo de 32 ms, que são latência inerente do desenho (seção 6.1).
+- **Orçamento de tempo real (32 ms = 32.000 µs):** `t_total` médio de 1452 µs ocupa ≈ 4,5% do passo; o máximo observado (1818 µs) ≈ 5,7%. `t_feat` (FFT e features) domina: 1379 µs de média. A soma das médias (22 + 1379 + 39 + 10 = 1450 µs) confere com o `t_total` (1452 µs) dentro de 2 µs. Nesta execução, portanto, o pipeline coube com folga no passo entre janelas.
+- **`t_decision`** = da 1ª janela positiva do voto vencedor ao alerta: média ≈ 178,1 ms, p50 ≈ 161,6 ms, p95 = máx ≈ 225,5 ms. Com só n = 25, o p95 coincide com o máximo. O p50 está perto do mínimo de projeto (5 passos = 160 ms, seção 6.1).
+- **Como ler os percentis:** o T4 calcula p50/p95 sobre as **últimas 512 janelas** (≈ 16 s, `LAT_SAMPLES`), enquanto média e máximo são acumulados sobre **todas** as janelas (n = 53.570). Para `t_decision` (n = 25 < 512) os percentis usam todas as amostras.
+
+**Robustez (mesma linha `# t=1714s`):**
+
+| Contador | Valor |
+|---|---|
+| `overruns` (T2 atrasada, ring cheio) | 0 |
+| `queue_drops` (fila cheia) | 0 |
+| `torn_reads` (leitura rasgada após overrun) | 0 |
+| `mutex_timeouts` | 0 |
+
+**Stack livre mínima observada** (*high-water mark*, bytes): T1 = 3396, T2 = 3404, T3 = 2500, T4 = 4228 (tamanhos configurados em `board_config.h`: 4096 / 4096 / 4096 / 6144). Nenhuma pilha chegou perto de acabar nesta execução.
+
+Uso de memória do build `esp32dev` (real, do compilador, medido **antes** de acrescentar os comandos de ajuste ao vivo; refazer com `pio run`): RAM 26,5% (≈ 87 kB de 320 kB), flash 22,7% (≈ 298 kB de 1,3 MB).
+
+**Bring-up e gravação (registro):** o bring-up do I2S exigiu **inverter `I2S_CHANNEL_SWAP` (0 → 1)** (canal do driver legado com `ONLY_LEFT`/`ONLY_RIGHT`); a gravação do firmware foi feita a **115200 baud** (`upload_speed` em `platformio.ini`).
 
 ### 6.3 PC (host; não representam o ESP32)
 
@@ -129,11 +149,35 @@ Split de teste, 94.760 janelas, `dsp_cli` nativo (`docs/results/teste_test_*_nat
 | `t_feat` (host) | 19,5 | 17 | 31 | 2289 |
 | `t_infer` (host) | ≈ 0 | 0 | 0 | 17 |
 
-`t_sched`/`t_queue` não existem no PC (sem RTOS). O ESP32 (240 MHz, FPU de precisão simples, FFT de 1024 pontos complexa em `float`) será **muito** mais lento que um PC; **não extrapole** estes números.
+`t_sched`/`t_queue` não existem no PC (sem RTOS). O ESP32 foi de fato **muito** mais lento nesta etapa (`t_feat` p50 = 1377 µs no ESP32 contra 17 µs no PC); **não extrapole** os números do PC.
 
-## 7. Discussão
+## 7. Resultados ao vivo (amostra pequena)
 
-**Dado sintético/limpo × microfone real.** A maior parte dos positivos é sintética e limpa: mesmo timbre do gerador, sem o filtro do alto-falante do celular, sem o microfone MEMS e sem sala real. Os 3 positivos reais do teste vêm de poucos autores; 100% de recall neles não é evidência forte. Espere queda de recall ao vivo, principalmente com o alarme tocado por um celular a 30–50 cm (resposta de frequência do alto-falante, reverberação, distorção).
+**Isto é uma amostra pequena e informal, sem intervalo de confiança.** Não é uma avaliação: os itens abaixo não são acurácia/recall/FPR e **não** passaram pelo conjunto de teste do dataset (ver `docs/decisions.md`, D11). Parte do que se afirma aqui **não tem registro** (log serial, número de repetições, aparelho de origem); isso está dito item a item.
+
+**Procedimento:** com o `esp32dev` gravado, o limiar de decisão foi calibrado **ao vivo** para **THR = 0,99** (voto 6 de 8 e gate −50 dBFS mantidos), com a sessão guiada `tests/calibrate.py`: 20 s por som (despertador, toque de ligação, sirene e alarme de fumaça tocados de alto-falante; também fala, palma e batida na mesa). O alarme de fumaça foi tocado **a partir de vídeos do YouTube**, em **dois aparelhos**: o **notebook** (a trilha `demo_track.wav` com `aplay` e um vídeo do YouTube) e o **celular** (teste final). A **distância de 30–50 cm era a pretendida; não foi medida.** Volume não registrado.
+
+**O que foi observado, com o grau de evidência de cada item:**
+
+| Item | Observação | Evidência / o que **não** foi registrado |
+|---|---|---|
+| Alarme de fumaça, **celular** (teste final) | o **LED acendeu** | verificado **só visualmente**; **não há log serial** e o **número de repetições não foi registrado** |
+| Alarme de fumaça, **notebook** (`demo_track.wav` com `aplay` e vídeo do YouTube) | usado como fonte do alarme | nenhum resultado específico do notebook foi registrado aqui |
+| Tempos de decisão do alarme | **≈ 161 a 193 ms** | vêm de **uma execução com log serial em que o aparelho de origem do alarme NÃO foi registrado** |
+| Calibração de 20 s por som (`tests/calibrate.py`) | **0 alertas** nos negativos e **2 alertas** de alarme em 20 s | aparelho, volume e distância por som não registrados |
+| fala, palma, batida na mesa | **não** dispararam | idem |
+| despertador, toque de ligação, sirene | **não** dispararam **depois de calibrar THR = 0,99** (com o limiar de treino, 0,9, dispararam: motivo da calibração) | idem |
+
+**Limites (importantes):**
+- **Só vale para estes sons e estas condições** (vídeos do YouTube tocados de alto-falantes de notebook e celular, volume não registrado, distância pretendida de 30–50 cm **não medida**). Outro aparelho, volume, posição ou sala podem dar outro resultado.
+- **Folga estreita:** o alarme chegou a probabilidade **0,998** e o limiar é **0,99**. Um alarme um pouco mais fraco ou distante pode cair abaixo do limiar e **não ser detectado**; a redução de recall com o limiar mais alto **não foi medida**.
+- **Não é validação independente:** o limiar foi escolhido nos mesmos sons em que se observou o resultado (calibrado e avaliado na mesma amostra).
+- **Falsos alertas na execução longa:** a execução de ≈ 28,6 min (seção 6.2) registrou 25 alertas no total (n de `t_decision`); **não** foi registrado quantos foram do alarme de fumaça e se houve falsos alertas.
+- Nenhuma repetição sistemática (a tabela de 10 repetições do `HARDWARE_CHECKLIST.md` segue por fazer).
+
+## 8. Discussão
+
+**Dado sintético/limpo × microfone real.** A maior parte dos positivos é sintética e limpa: mesmo timbre do gerador, sem o filtro do alto-falante do celular, sem o microfone MEMS e sem sala real. Os 3 positivos reais do teste vêm de poucos autores; 100% de recall neles não é evidência forte. Espere queda de recall ao vivo, principalmente com o alarme tocado por um celular a 30–50 cm (resposta de frequência do alto-falante, reverberação, distorção). Na prática, ao vivo os negativos tonais (sirene, despertador, toque) dispararam com o limiar de treino e foi preciso subir o limiar para 0,99, com folga estreita (seção 7).
 
 **Por que a acurácia ao vivo pode ser menor que a do teste:** distribuição diferente (sala, alto-falante, distância), ruído do próprio ESP32/fiação, deslocamento de bits (`I2S_SAMPLE_SHIFT`) e nível de sinal diferentes do treino, o gate de −50 dBFS que depende do ganho real do INMP441, e o fato de o teste offline ter só 3 alarmes reais.
 
@@ -143,11 +187,11 @@ Split de teste, 94.760 janelas, `dsp_cli` nativo (`docs/results/teste_test_*_nat
 
 **Trabalhos futuros:** coletar gravações reais no ambiente da demo; features temporais (modulação do padrão T3, 3 bipes + pausa) ou MFCC; MLP pequeno; calibrar o gate com o microfone real; usar o driver `i2s_std` do ESP-IDF 5; testar overrun de propósito (T2 atrasada) no hardware.
 
-## 8. Fontes e atribuição
+## 9. Fontes e atribuição
 
 Licenças conferidas nos arquivos das próprias fontes (data/raw/…), não de memória. O uso neste trabalho é acadêmico e não comercial.
 
-### 8.1 Positivos reais — Freesound (API oficial; 20 clipes mantidos após a curadoria)
+### 9.1 Positivos reais — Freesound (API oficial; 20 clipes mantidos após a curadoria)
 
 Lista gerada de `data/raw/smoke_real/SOURCES.csv` menos `EXCLUDED.csv` (a licença é a que a API do Freesound devolveu para cada clipe: 15 CC0 e 5 CC-BY). Foi usado o *preview* mp3 convertido para 16 kHz mono. Os clipes CC-BY exigem atribuição ao autor, dada abaixo.
 
@@ -174,28 +218,28 @@ Lista gerada de `data/raw/smoke_real/SOURCES.csv` menos `EXCLUDED.csv` (a licen�
 | Smoke Detector  Alarm | rayprice | <https://freesound.org/people/rayprice/sounds/155006/> | CC BY 3.0 |
 | smoke_alarm.wav | wjoojoo | <https://freesound.org/people/wjoojoo/sounds/345497/> | CC BY 4.0 |
 
-### 8.2 Positivos sintéticos — Hugging Face
+### 9.2 Positivos sintéticos — Hugging Face
 
 *ShantyCam — AudioDet Synthetic Smoke-Alarm Clips* (`ShantyCam/audiodet-synth-smoke`, 250 clipes sintéticos): **CC-BY-4.0**, conforme o `README.md` do dataset (metadado `license: cc-by-4.0` e a seção "License", que pede a atribuição "ShantyCam — AudioDet Synthetic Smoke-Alarm Clips"). O outro conjunto sintético (`ml/gen_smoke_alarm.py`) é código deste projeto.
 
-### 8.3 Negativos — ESC-50
+### 9.3 Negativos — ESC-50
 
 K. J. Piczak, *ESC: Dataset for Environmental Sound Classification*, Proceedings of the 23rd ACM Conference on Multimedia, Brisbane, 2015, DOI 10.1145/2733373.2806390. Conforme `ESC-50/LICENSE`: o conjunto como um todo está sob **CC BY-NC 3.0** (uso não comercial); o subconjunto ESC-10 está sob CC BY 3.0; cada clipe deriva de uma gravação do Freesound com licença própria (CC0 ou CC-BY, autor e URL de origem listados clipe a clipe no próprio `ESC-50/LICENSE`, que não é reproduzido aqui). Como este trabalho é acadêmico, o uso é compatível com a cláusula NC; **não** use os dados/modelo em produto comercial sem rever essa licença.
 
-### 8.4 Fala — mini_speech_commands
+### 9.4 Fala — mini_speech_commands
 
 Excerto do *Speech Commands Dataset* usado em tutoriais do TensorFlow (8 palavras). **Licença: confirmar.** O `README.md` do excerto não declara a licença; ele apenas remete à documentação e à licença do dataset original (Speech Commands, do Google). Confirme na página do dataset original antes de publicar.
 
-### 8.5 Outros
+### 9.5 Outros
 
 Ruído branco/rosa/marrom e todo o áudio de augmentation são gerados por código deste projeto. Bibliotecas: scikit-learn, skl2onnx, onnxruntime, NumPy/SciPy, Unity (ThrowTheSwitch) e PlatformIO/Arduino-ESP32 (cada uma com sua licença própria; **confirmar** ao redistribuir binários).
 
-## 9. Referências
+## 10. Referências
 
 - Documentação Arduino-ESP32 2.0.x e ESP-IDF 4.4 (`driver/i2s.h`), FreeRTOS (mutex com herança de prioridade, semáforos de contagem, filas).
 - Datasheet INMP441 (TDK InvenSense).
 - K. J. Piczak, *ESC: Dataset for Environmental Sound Classification* (ESC-50), ACM Multimedia 2015, DOI 10.1145/2733373.2806390 (CC BY-NC 3.0).
-- *Speech Commands Dataset* (Google; excerto `mini_speech_commands` do TensorFlow); licença a confirmar (ver seção 8.4).
+- *Speech Commands Dataset* (Google; excerto `mini_speech_commands` do TensorFlow); licença a confirmar (ver seção 9.4).
 - Hugging Face `ShantyCam/audiodet-synth-smoke` (CC-BY-4.0).
-- Freesound (API v2), clipes CC0/CC-BY listados na seção 8.1.
+- Freesound (API v2), clipes CC0/CC-BY listados na seção 9.1.
 - scikit-learn, skl2onnx, onnxruntime, Unity (ThrowTheSwitch), PlatformIO.

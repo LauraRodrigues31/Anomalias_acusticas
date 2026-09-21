@@ -97,7 +97,7 @@ Leia na ordem. Tudo aqui descreve o **código que existe** neste repositório. S
 
 ## 7. Como a latência foi medida e o que cada número significa
 
-Carimbos com `esp_timer_get_time()` (µs): `t_block_ready` (T1) → `t_feat_start`/`t_feat_done` (T2) → `t_recv`/`t_end` (T3). `t_sched` = espera até T2 começar; `t_feat` = custo do cálculo; `t_queue` = tempo na fila; `t_infer` = gate + modelo + decisão + LED; `t_total` = do bloco pronto ao LED; `t_decision` = da 1ª janela positiva do voto ao alerta. **Os números do ESP32 ainda estão PENDENTES** (só o PC foi medido, e isso não vale para o ESP32). Detalhes: `docs/latency_methodology.md`.
+Carimbos com `esp_timer_get_time()` (µs): `t_block_ready` (T1) → `t_feat_start`/`t_feat_done` (T2) → `t_recv`/`t_end` (T3). `t_sched` = espera até T2 começar; `t_feat` = custo do cálculo; `t_queue` = tempo na fila; `t_infer` = gate + modelo + decisão + LED; `t_total` = do bloco pronto ao LED; `t_decision` = da 1ª janela positiva do voto ao alerta. **Medido no ESP32** (21/09/2026, silêncio com alarmes ocasionais, n = 53.570 janelas): `t_total` ≈ 1,45 ms por janela (≈ 4,5% do passo de 32 ms), dominado por `t_feat` ≈ 1,38 ms; `t_decision` p50 ≈ 161,6 ms; overruns/drops/torn/mutex_timeouts = 0 (`docs/relatorio_tecnico.md`, seção 6.2). `t_total` **não** inclui os 64 ms da janela. Detalhes: `docs/latency_methodology.md`.
 
 ## 8. Roteiro da demo e o que dizer
 
@@ -132,7 +132,7 @@ Carimbos com `esp_timer_get_time()` (µs): `t_block_ready` (T1) → `t_feat_star
 
 **11) Por que a acurácia ao vivo pode ser menor que a do teste?** Os positivos do teste são quase todos sintéticos e limpos; ao vivo há alto-falante de celular, sala, distância, ruído do ESP32, nível do INMP441 diferente (`I2S_SAMPLE_SHIFT`) e gate (`RMS_GATE_DB`) não calibrado. Só 3 alarmes reais no teste: 100% de recall neles é evidência fraca.
 
-**12) Como se mediu a latência de cada etapa?** Cada mensagem carrega `t_block_ready_us` (T1), `t_feat_start_us`/`t_feat_done_us` (T2); T3 pega `t_recv` e `t_end` e calcula `t_sched`, `t_feat`, `t_queue`, `t_infer`, `t_total` (`t3_anomaly_detect`), guardando em `SystemStats` sob `stats_mutex`; T4 imprime média, p50, p95, máx. No ESP32: PENDENTE. No PC, `tests/run_test.py --target native` mede `t_feat` e `t_infer` com `std::chrono`.
+**12) Como se mediu a latência de cada etapa?** Cada mensagem carrega `t_block_ready_us` (T1), `t_feat_start_us`/`t_feat_done_us` (T2); T3 pega `t_recv` e `t_end` e calcula `t_sched`, `t_feat`, `t_queue`, `t_infer`, `t_total` (`t3_anomaly_detect`), guardando em `SystemStats` sob `stats_mutex`; T4 imprime média, p50, p95, máx. No ESP32: valores reais na seção 6.2 do relatório (linha `# t=` do monitor). No PC, `tests/run_test.py --target native` mede `t_feat` e `t_infer` com `std::chrono`.
 
 ## 10. Glossário
 

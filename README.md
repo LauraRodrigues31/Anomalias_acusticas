@@ -4,7 +4,7 @@ Atividade ponderada de Edge Computing (Inteli). O ESP32 escuta um microfone I2S 
 
 Arquitetura: 4 tarefas FreeRTOS (captura → features → detecção → monitor) sincronizadas por buffer circular, semáforo de contagem, fila e 2 mutexes. Diagrama: [`docs/diagrama_tarefas.svg`](docs/diagrama_tarefas.svg). Relatório: [`docs/relatorio_tecnico.md`](docs/relatorio_tecnico.md). Para estudar o código: [`docs/STUDY.md`](docs/STUDY.md).
 
-> **Estado:** firmware compila e o pipeline foi testado no PC. **Nada foi medido/validado no hardware ainda** (latências do ESP32 = `PENDENTE`). Ver [`docs/HARDWARE_CHECKLIST.md`](docs/HARDWARE_CHECKLIST.md).
+> **Estado:** firmware compila e o pipeline foi testado no PC. Latência/robustez do ESP32 foram **medidas** (`docs/relatorio_tecnico.md`, seção 6.2) e há uma **amostra pequena** de resultados ao vivo (seção 7); o alvo serial do harness e a acurácia ao vivo sistemática seguem **não validados**. Ver [`docs/HARDWARE_CHECKLIST.md`](docs/HARDWARE_CHECKLIST.md).
 
 ## Estrutura
 

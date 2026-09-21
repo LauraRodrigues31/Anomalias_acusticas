@@ -53,5 +53,5 @@ Saídas em `docs/results/*.json|csv|png`, com carimbo de data e do alvo (`native
 
 | Etapa | Alvo | Estado |
 |---|---|---|
-| `t_sched`, `t_feat`, `t_queue`, `t_infer`, `t_total`, `t_decision` no ESP32 | esp32 | **PENDENTE (medir no hardware)** |
+| `t_sched`, `t_feat`, `t_queue`, `t_infer`, `t_total`, `t_decision` no ESP32 | esp32 | medido em 21/09/2026 (execução de ≈ 28,6 min em silêncio com alarmes ocasionais, n = 53.570 janelas): ver `docs/relatorio_tecnico.md`, seção 6.2 |
 | `t_feat`, `t_infer` no PC | native | medido: ver `docs/results/teste_*_native.json` (rotulado "host; não representa o ESP32") |
