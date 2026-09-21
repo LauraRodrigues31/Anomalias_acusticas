@@ -96,7 +96,6 @@ Classificação usada em todas as tabelas:
 | `decisions.md` | Registro das decisões (N=6/M=8, MLP descartado, etc.) | Você | ÚTIL | Perde a justificativa |
 | `latency_methodology.md` | Como cada latência é medida | Você | ÚTIL (o enunciado pede medir e documentar a latência) | Perde a explicação |
 | `serial_protocol.md` | Formato das linhas `W`/`A`/`S` e do `START` | Você | EXTRA | Perde a especificação do protocolo |
-| `PEDIDOS_PARA_ALUNA.md` | Pendências para você (ouvir clipes, clipe da demo) | Você | EXTRA | Some o lembrete |
 | `results/` | Resultados reais dos testes (ver abaixo) | **Script** (`evaluate.py`, `run_test.py`) | ÚTIL (evidência dos números do relatório) | O relatório perde a fonte dos números |
 
 ### `docs/results/` (todos gerados por script, carimbados com data e alvo)
@@ -145,14 +144,13 @@ Verifiquei numa **cópia temporária** que, removendo todos os itens abaixo de u
 | `tests/calibrate.py` | `git rm tests/calibrate.py` | some a calibração assistida (os comandos `GATE/THR/VOTE` do firmware continuam) |
 | `models/detector.joblib` | `git rm models/detector.joblib` | `python -m ml.export_onnx` só volta a funcionar depois de rodar `python -m ml.train` |
 | `docs/serial_protocol.md` | `git rm docs/serial_protocol.md` | links em `README.md`/`HARDWARE_CHECKLIST.md` ficam quebrados |
-| `docs/PEDIDOS_PARA_ALUNA.md` | `git rm docs/PEDIDOS_PARA_ALUNA.md` | some o lembrete de ouvir os clipes do Freesound |
 | `docs/decisions.md` | `git rm docs/decisions.md` | o relatório cita "D7/D8"; a justificativa deixa de existir |
 | `docs/feature_spec.md`, `docs/latency_methodology.md` | `git rm docs/feature_spec.md docs/latency_methodology.md` | links no relatório/README ficam quebrados |
 | `docs/HARDWARE_CHECKLIST.md` | `git rm docs/HARDWARE_CHECKLIST.md` | perde o roteiro de montagem (**recomendo manter**) |
 | `ml/fetch_freesound.py`, `ml/curate_real.py`, `.env.example` | `git rm ml/fetch_freesound.py ml/curate_real.py .env.example` | não dá mais para rebaixar/curar os clipes reais (os já baixados continuam) |
 | Todos os resultados gerados | `git rm -r docs/results` | o relatório cita esses arquivos; os números seriam regeneráveis, mas o teste **só pode ser reavaliado com `--allow-test-rerun`** |
 
-Para **mover** em vez de apagar (mantém o histórico e o arquivo): `mkdir -p extras && git mv docs/serial_protocol.md docs/PEDIDOS_PARA_ALUNA.md tests/fake_esp32.py extras/`. (Os `.md` movidos ficam com links relativos quebrados; nenhum código depende deles.)
+Para **mover** em vez de apagar (mantém o histórico e o arquivo): `mkdir -p extras && git mv docs/serial_protocol.md tests/fake_esp32.py extras/`. (Os `.md` movidos ficam com links relativos quebrados; nenhum código depende deles.)
 
 **Nota (atualização):** depois dessa verificação foram acrescentados `runtime_params.*`, `test_cmd`, `calibrate.py` e o modo `--live`. Os 22 testes Unity (7 + 8 + 7) e o `dsp_cli` foram compilados e rodados **à mão** com g++ (sem o `pio`) e o firmware ESP32 só teve a sintaxe checada com stubs; **rode `pio test -e native` e `pio run` nos 4 ambientes** para confirmar antes de commitar. A checagem de "remover sem quebrar" da lista acima vale para os itens listados; `tests/calibrate.py` não é importado por nenhum outro arquivo.
 

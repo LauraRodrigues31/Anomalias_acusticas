@@ -110,7 +110,7 @@ def collect(limit):
     n_real = len(fs_files) + len(man)   # já sem os excluídos pela curadoria
     if n_real < MIN_REAL_WARN:
         print(f"\n*** AVISO: só {n_real} clipes reais de alarme (< {MIN_REAL_WARN}). Avise a aluna antes de "
-              f"decidir como reportar (ver docs/PEDIDOS_PARA_ALUNA.md). Sem positivos reais o relatório "
+              f"decidir como reportar. Sem positivos reais o relatório "
               f"deve dizer isso. ***\n", file=sys.stderr)
     # (data/raw/demo/alarm_demo.wav NÃO é lido aqui: fica fora de tudo)
 

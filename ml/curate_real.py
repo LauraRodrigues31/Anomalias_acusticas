@@ -5,8 +5,8 @@ Exclui, gravando data/raw/smoke_real/EXCLUDED.csv (os arquivos ficam onde estão
   (b) energia na banda 2-4 kHz desprezível (mediana de band_ratio das janelas ativas < 0.3): não é
       um alarme de piezo; provavelmente locução/ruído com título enganoso;
   (c) nível máximo abaixo do gate (rms_db < RMS_GATE_DB em todas as janelas): não pode disparar.
-LIMITAÇÃO: (b) e (c) usam as próprias features; a aluna deve conferir os excluídos OUVINDO
-(docs/PEDIDOS_PARA_ALUNA.md). Uso: python -m ml.curate_real
+LIMITAÇÃO: (b) e (c) usam as próprias features; a aluna deve conferir os excluídos OUVINDO.
+Uso: python -m ml.curate_real
 """
 import os
 import numpy as np
