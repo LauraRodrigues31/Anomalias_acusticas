@@ -97,7 +97,21 @@ Por janela (teste): precisão 95,4%, recall 88,0%, FPR 0,84%. Matriz de confusã
 
 **Leitura honesta:** as metas globais indicativas (recall ≥ 90%, FPR ≤ 5%) foram atingidas, **mas** o FPR isolado dos negativos difíceis (7,5%) fica acima de 5%: sirenes, buzinas e despertadores ainda disparam, o que é esperado com 4 features de uma única janela (um tom de sirene em 2–4 kHz é parecido com um alarme). Os falsos positivos em categorias não tonais (gato, galo, pássaros, ruídos) merecem atenção: o teste tem 8 clipes por categoria, então cada erro pesa 12,5% da categoria. O mesmo pipeline compilado em C++ (`dsp_cli`, via `tests/run_test.py --target native`) reproduziu **exatamente** os mesmos números de validação e de teste.
 
-**Simulação de anomalias** (`--simulate-anomalies`, 40 cenas de 10 s com alarme sintético novo em instante conhecido sobre fundos de validação; PC): 40/40 detectadas em SNR 0, 5, 10 e 20 dB (10 cenas cada), atraso médio entre o início do alarme e o ALERTA (tempo de áudio) de 0,35 / 0,39 / 0,23 / 0,21 s. Atenção: o alarme é **sintético** e o SNR é aplicado sobre o fundo inteiro; não demonstra desempenho com um alarme real tocado por um alto-falante.
+**Simulação de anomalias** (`--simulate-anomalies`, 40 cenas de 10 s com alarme sintético novo em instante conhecido, semente 2026, 10 cenas por SNR; PC). Atraso = tempo de áudio entre o início do alarme e o ALERTA. Há dois resultados, conforme o split de onde vêm os fundos, e **não se devem misturar**:
+
+| Split dos fundos | Detectadas (SNR 0 / 5 / 10 / 20 dB) | Total | Atraso médio (s), SNR 0 / 5 / 10 / 20 |
+|---|---|---|---|
+| `--split val` (execução de 21/09/2026 registrada no relatório) | 10 / 10 / 10 / 10 | **40/40** | 0,35 / 0,39 / 0,23 / 0,21 |
+| `--split test` (**comando padrão atual**) | 10 / **9** / 10 / 10 | **39/40** | 0,770 / 0,272 / 0,227 / 0,214 |
+
+No `--split test`, a cena perdida é do SNR 5 dB e tem fundo `clock_tick`. Os números do `--split test` estão em `AUDITORIA.md` §3.2 (execução determinística: rodada duas vezes com resultado idêntico). Para reproduzir:
+
+```bash
+python tests/run_test.py --target native --simulate-anomalies --split val    # 40/40; atrasos 0,35 / 0,39 / 0,23 / 0,21 s
+python tests/run_test.py --target native --simulate-anomalies                # padrão (--split test): 39/40; 0,770 / 0,272 / 0,227 / 0,214 s
+```
+
+Atenção: o alarme é **sintético** e o SNR é aplicado sobre o fundo inteiro; não demonstra desempenho com um alarme real tocado por um alto-falante. As cenas do `--split test` usam fundos do conjunto de teste, mas nada foi ajustado com base nelas.
 
 ## 6. Análise de latência
 
@@ -181,7 +195,7 @@ Split de teste, 94.760 janelas, `dsp_cli` nativo (`docs/results/teste_test_*_nat
 
 **Por que a acurácia ao vivo pode ser menor que a do teste:** distribuição diferente (sala, alto-falante, distância), ruído do próprio ESP32/fiação, deslocamento de bits (`I2S_SAMPLE_SHIFT`) e nível de sinal diferentes do treino, o gate de −50 dBFS que depende do ganho real do INMP441, e o fato de o teste offline ter só 3 alarmes reais.
 
-**Limitações:** (i) só 4 features de uma janela; não há informação temporal de várias janelas (sirenes com varredura de frequência poderiam ser separadas por isso); (ii) poucos positivos reais; (iii) fala é isolada (palavras), não conversa; (iv) os "negativos difíceis" do ESC-50 são poucos (8 por categoria no teste); (v) o alvo serial do harness não foi validado em hardware.
+**Limitações:** (i) só 4 features de uma janela; não há informação temporal de várias janelas (sirenes com varredura de frequência poderiam ser separadas por isso); (ii) poucos positivos reais; (iii) fala é isolada (palavras), não conversa; (iv) os "negativos difíceis" do ESC-50 são poucos (8 por categoria no teste); (v) o alvo serial do harness não foi validado em hardware; (vi) **MFCC não foi implementado**: o enunciado os cita como exemplos de características; usamos RMS, centroide e outras 3 features espectrais (razão de banda 2–4 kHz, *peakiness* e frequência do pico), consideradas suficientes para um som tonal, com custo baixo e paridade exata entre Python e C++ (o limite conhecido são os negativos tonais, seções 5 e 7); MFCC fica como **trabalho futuro**; (vii) o *seqlock* do buffer circular (`firmware/src/ring.cpp`) **não usa barreiras de memória explícitas** (`atomic_thread_fence`) e um **teste de estresse de overrun não foi feito**; o overrun não ocorreu nas 53.570 janelas medidas (`overruns` = 0, `torn_reads` = 0, seção 6.2), o que **não** prova que o caminho de overrun está correto; (viii) **uso de heap e de CPU não foram medidos diretamente**: a estimativa de ≈ 4,3% de um núcleo é **conta** (`t_feat` de 1379 µs por passo de 32 ms), não medição de CPU.
 
 **Riscos:** fiação/canal L/R errados (o autoteste existe para isso), o limiar calibrado em dados que não imitam o celular, latência de T3 com o log por janela no modo teste, e a corrida de I2S do driver legado se o overrun ocorrer (contadores existem para detectar).
 
