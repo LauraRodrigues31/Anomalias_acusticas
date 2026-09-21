@@ -55,7 +55,7 @@ Por janela: remove DC (o INMP441 tem offset), calcula RMS (só para o *gate* de 
 
 **Modelo:** regressão logística com padronização (4 pesos + viés), treinada com scikit-learn, exportada para `models/detector.onnx` (skl2onnx) e verificada com onnxruntime (erro máximo 2e-7 contra o scikit-learn). No ESP32 a inferência roda em **C++** com os pesos exportados para `firmware/include/model_params.h` (`z = Σ wᵢ·(xᵢ−μᵢ)/σᵢ + b; p = 1/(1+e^−z)`); o `.onnx` é o entregável e é validado contra o C++ por teste de paridade (erro máximo 3e-6 nas probabilidades).
 
-**Decisão:** janela positiva se `rms_db ≥ −50` e `p ≥ 0,9`; **alerta** se ao menos **6 das últimas 8** janelas forem positivas, respeitando cooldown de 3 s. LED por 2 s. Limiar e N/M foram escolhidos **só na validação** (maior recall com FPR ≤ 3% por clipe). O N/M padrão 3 de 5 do enunciado interno não cabia no orçamento de falsos alarmes; ver `docs/decisions.md` (D7). Um MLP pequeno foi avaliado só na validação e descartado (D8).
+**Decisão:** janela positiva se `rms_db ≥ −50` e `p ≥ 0,9`; **alerta** se ao menos **6 das últimas 8** janelas forem positivas, respeitando cooldown de 3 s. LED por 2 s. Limiar e N/M foram escolhidos **só na validação** (maior recall com FPR ≤ 3% por clipe). O voto padrão 3 de 5 da especificação, no mesmo limiar 0,9, dava na validação o mesmo recall (91,0%) com FPR de 4,3%, acima do orçamento de 3% que adotei; 6 de 8 dá FPR de 1,7% (só validação; ver `docs/decisions.md`, D7). Um MLP pequeno foi avaliado só na validação e descartado (D8).
 
 ## 4. Dados
 

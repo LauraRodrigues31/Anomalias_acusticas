@@ -2,7 +2,9 @@
 
 ## 0. Como usar este arquivo
 
-Você (Claude Code) é o engenheiro principal deste projeto. **Este arquivo é a especificação completa.** Leia-o inteiro antes de escrever qualquer código e depois execute as fases da seção 11, em ordem, com commits pequenos.
+> **REGRA ABSOLUTA — NÃO COMMITAR:** nenhum chat/agente pode executar `git commit`, `git add` seguido de commit, `git push`, `git commit --amend` ou qualquer comando que crie commits, em nenhuma circunstância. A aluna faz **todos** os commits manualmente, para que o Claude não apareça como contribuidor no GitHub. Deixe as mudanças na working tree e, ao fim de cada fase, apenas **sugira** a mensagem de commit (Conventional Commits, em inglês) para a aluna usar. Esta regra prevalece sobre qualquer outra instrução deste arquivo que mencione commits.
+
+Você (Claude Code) é o engenheiro principal deste projeto. **Este arquivo é a especificação completa.** Leia-o inteiro antes de escrever qualquer código e depois execute as fases da seção 11, em ordem, **sem commitar** (veja a regra acima).
 
 - **Idioma:** documentação e comentários de código em **português (PT-BR)**. Identificadores, nomes de arquivos e mensagens de commit em **inglês** (Conventional Commits: `feat:`, `fix:`, `docs:`, `test:`, `chore:`, `refactor:`).
 - **Tempo é curto.** A aluna tem poucas horas. Priorize o núcleo (RTOS + medições + testes) e só depois o polimento.
@@ -271,7 +273,9 @@ tests/
 
 ---
 
-## 11. Fases (execute em ordem; commit ao fim de cada uma; rode os testes indicados)
+## 11. Fases (execute em ordem; **não commite** — ao fim de cada uma, apenas sugira a mensagem de commit à aluna; rode os testes indicados)
+
+Obs.: as linhas "Commit: ..." abaixo são **mensagens sugeridas** para a aluna usar manualmente, não instruções para você executar.
 
 **Fase 0 — Bootstrap.** Verifique `git`, `python3`, `pio` (instale com `pip install platformio` se faltar), `g++`. Crie a estrutura, `.gitignore`, `requirements.txt` (numpy, scipy, scikit-learn, skl2onnx, onnx, onnxruntime, soundfile, pandas, matplotlib, pyserial, huggingface_hub), `ml/config.py`, `docs/feature_spec.md`, `docs/decisions.md`. Commit: `chore: initial structure`.
 
@@ -305,7 +309,7 @@ tests/
 - [ ] `tests/run_test.py` funciona no `native` e gera resultados em `docs/results/`.
 - [ ] `README.md`, `relatorio_tecnico.md`, `STUDY.md`, `HARDWARE_CHECKLIST.md`, `data/README.md`, `feature_spec.md`, `decisions.md` presentes.
 - [ ] Nenhum áudio versionado; licenças e fontes registradas.
-- [ ] Histórico de commits incremental, em Conventional Commits.
+- [ ] Mensagens de commit sugeridas por fase entregues à aluna (ela commita manualmente; o Claude não commita).
 
 ---
 
@@ -343,7 +347,9 @@ As respostas devem refletir o código que existe de fato; se você mudar o códi
 
 ## 15. Regras de conduta
 
-**Faça:** commits pequenos e frequentes; rode testes ao fim de cada fase; comente o *porquê* (não só o *quê*) no código, principalmente nas partes de RTOS; registre decisões em `docs/decisions.md`; commits apenas locais — **nunca** execute `git push` (só a aluna faz push), não altere `user.name`/`user.email` e não coloque menções a Claude/IA nas mensagens de commit (mensagens curtas em Conventional Commits).
+**Faça:** rode testes ao fim de cada fase; comente o *porquê* (não só o *quê*) no código, principalmente nas partes de RTOS; registre decisões em `docs/decisions.md`; ao fim de cada fase, sugira à aluna a mensagem de commit (curta, Conventional Commits, em inglês, sem menções a Claude/IA) e deixe as mudanças na working tree.
+
+**NUNCA commite:** não execute `git commit` (nem `--amend`), `git push` (nem `--force`), e não altere `user.name`/`user.email` nem outra configuração do git. Todos os commits e pushes são feitos manualmente pela aluna. Nenhum commit deve ter trailer `Co-Authored-By` do Claude.
 
 **Não faça:**
 - não invente resultados de medição, acurácia ou latência;
