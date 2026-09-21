@@ -10,3 +10,7 @@ __pycache__/
 firmware/.pio/
 .env
 Ponderada*.pdf
+
+# calibração ao vivo (dados locais)
+docs/results/calibracao_*.csv
+firmware/logs/
