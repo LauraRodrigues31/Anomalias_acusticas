@@ -277,16 +277,23 @@ def mode_simulate(tg, a):
 
 
 def mode_demo(tg, a):
+    """Mostra a decisão janela a janela de um WAV. Com --target serial:<porta> o áudio é ENVIADO pelo USB ao
+    ESP32 gravado com o esp32-test (plano B se o microfone falhar); com native roda no PC."""
     from ml import model as M
     x = load_i16(a.demo_clip)
     res = tg.run([(0, x)])["0"]
     p = M.load_params()
-    print(f"clipe {a.demo_clip}: {len(x) / C.FS:.1f} s | modelo: thr={p['prob_threshold']} N={p['vote_n']} de M={p['vote_m']} | {tg.label}")
+    print(f"clipe {a.demo_clip}: {len(x) / C.FS:.1f} s | modelo: thr={p['prob_threshold']} N={p['vote_n']} de M={p['vote_m']} "
+          f"(o dispositivo pode ter parâmetros diferentes) | {tg.label}")
+    # no ESP32 os tempos são µs desde o boot: ancora a linha do tempo no início do clipe
+    base = 0.0 if not res["W"] or tg.name == "native" else res["W"][0]["t_block_ready_us"] / 1e6 - C.N / C.FS
     alerts = {x_["win"]: x_ for x_ in res["A"]}
     print(" win   t(s)  rms_db   prob  pos  alerta")
     for w in res["W"]:
         i = int(w["win"])
-        print(f"{i:4d} {w['t_block_ready_us'] / 1e6:6.2f} {w['rms_db']:7.1f} {w['prob']:6.2f}  {int(w['pos'])}    {'ALERTA' if i in alerts else ''}")
+        print(f"{i:4d} {w['t_block_ready_us'] / 1e6 - base:6.2f} {w['rms_db']:7.1f} {w['prob']:6.2f}  {int(w['pos'])}    {'ALERTA' if i in alerts else ''}")
+    if not res["W"]:
+        print("nenhuma linha W recebida: o dispositivo respondeu? (firmware esp32-test gravado? porta correta?)")
     print("DECISÃO:", "ALARME DETECTADO" if res["A"] else "sem alerta")
 
 

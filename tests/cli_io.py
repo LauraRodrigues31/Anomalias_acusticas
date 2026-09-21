@@ -4,7 +4,8 @@ import subprocess
 import numpy as np
 from ml import config as C
 
-CLI = os.path.join(C.ROOT, "firmware", ".pio", "build", "native-cli", "program")
+# DSP_CLI permite apontar para um binário compilado à mão (sem pio); o padrão é o do env native-cli
+CLI = os.environ.get("DSP_CLI") or os.path.join(C.ROOT, "firmware", ".pio", "build", "native-cli", "program")
 W_COLS = ["clip", "win", "t_block_ready_us", "rms_db", "centroid_norm", "band_ratio", "band_peakiness",
           "peak_freq_norm", "prob", "pos", "t_sched_us", "t_feat_us", "t_queue_us", "t_infer_us", "t_total_us"]
 
