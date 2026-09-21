@@ -343,14 +343,14 @@ As respostas devem refletir o código que existe de fato; se você mudar o códi
 
 ## 15. Regras de conduta
 
-**Faça:** commits pequenos e frequentes; rode testes ao fim de cada fase; comente o *porquê* (não só o *quê*) no código, principalmente nas partes de RTOS; registre decisões em `docs/decisions.md`; se houver `origin` configurado, faça `git push` ao fim de cada fase.
+**Faça:** commits pequenos e frequentes; rode testes ao fim de cada fase; comente o *porquê* (não só o *quê*) no código, principalmente nas partes de RTOS; registre decisões em `docs/decisions.md`; commits apenas locais — **nunca** execute `git push` (só a aluna faz push), não altere `user.name`/`user.email` e não coloque menções a Claude/IA nas mensagens de commit (mensagens curtas em Conventional Commits).
 
 **Não faça:**
 - não invente resultados de medição, acurácia ou latência;
 - não ajuste limiares ou hiperparâmetros olhando o conjunto de teste;
 - não versione áudio, datasets, `.venv` ou `.pio`;
 - não faça scraping de sites que exigem login/termos (Freesound, YouTube); peça à aluna;
-- não use `git push --force` nem altere a configuração global do git;
+- não execute `git push` (nem `--force`) e não altere a configuração do git (global ou local);
 - não grave firmware em placa sem a aluna pedir;
 - não relaxe uma tolerância de paridade para "fazer passar" sem entender a causa;
 - não mude decisões da seção 2 sem justificar e avisar.
