@@ -1,0 +1,87 @@
+{
+  "split": "test",
+  "thr": 0.9,
+  "vote_n": 6,
+  "vote_m": 8,
+  "clip": {
+    "global": {
+      "n": 544,
+      "tp": 73,
+      "fn": 5,
+      "fp": 12,
+      "tn": 454,
+      "recall": 0.9358974358974359,
+      "fpr": 0.02575107296137339,
+      "precision": 0.8588235294117647,
+      "accuracy": 0.96875
+    },
+    "positivo_sintetico": {
+      "n": 75,
+      "tp": 70,
+      "fn": 5,
+      "fp": 0,
+      "tn": 0,
+      "recall": 0.9333333333333333,
+      "fpr": null,
+      "precision": 1.0,
+      "accuracy": 0.9333333333333333
+    },
+    "positivo_real": {
+      "n": 3,
+      "tp": 3,
+      "fn": 0,
+      "fp": 0,
+      "tn": 0,
+      "recall": 1.0,
+      "fpr": null,
+      "precision": 1.0,
+      "accuracy": 1.0
+    },
+    "negativo_comum": {
+      "n": 386,
+      "tp": 0,
+      "fn": 0,
+      "fp": 6,
+      "tn": 380,
+      "recall": null,
+      "fpr": 0.015544041450777202,
+      "precision": 0.0,
+      "accuracy": 0.9844559585492227
+    },
+    "negativo_dificil": {
+      "n": 80,
+      "tp": 0,
+      "fn": 0,
+      "fp": 6,
+      "tn": 74,
+      "recall": null,
+      "fpr": 0.075,
+      "precision": 0.0,
+      "accuracy": 0.925
+    }
+  },
+  "window": {
+    "n": 64236,
+    "tp": 9338,
+    "fp": 449,
+    "fn": 1278,
+    "tn": 53171,
+    "recall": 0.8796156744536548,
+    "precision": 0.9541228159803822,
+    "fpr": 0.008373741141365161
+  },
+  "model": {
+    "C": 0.01,
+    "prob_threshold": 0.9,
+    "vote_n": 6,
+    "vote_m": 8,
+    "feature_names": [
+      "centroid_norm",
+      "band_ratio",
+      "band_peakiness",
+      "peak_freq_norm"
+    ]
+  },
+  "alvo": "host (PC): métricas de acurácia independem do alvo; nenhum tempo do ESP32 aqui",
+  "carimbo": "20260921-003904"
+}
