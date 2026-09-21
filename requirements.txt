@@ -1,0 +1,12 @@
+numpy
+scipy
+scikit-learn
+skl2onnx
+onnx
+onnxruntime
+soundfile
+pandas
+matplotlib
+pyserial
+huggingface_hub
+platformio

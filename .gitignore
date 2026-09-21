@@ -1,0 +1,10 @@
+data/raw/
+data/processed/
+.venv/
+.pio/
+build/
+__pycache__/
+*.pyc
+*.wav
+.vscode/
+firmware/.pio/
