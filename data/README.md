@@ -33,6 +33,6 @@ python -m ml.build_dataset          # ~1 min; grava data/processed/
 - **Augmentation só no treino** (ganho −40..−5 dBFS de pico, ruído de fundo SNR 0–30 dB, deslocamento, resposta de alto-falante, reverberação, alarme sobre fala, clipping leve). Variantes herdam o clip do original.
 - **Negativos difíceis** (marcados nos manifestos): `clock_alarm`, `siren`, `car_horn`, `church_bells`, `door_wood_knock`, `keyboard_typing`, `mouse_click`, `clapping`, `glass_breaking`, `crying_baby`.
 
-## Situação atual dos positivos reais
+## Situação atual dos positivos reais (Freesound, API oficial)
 
-**Nenhum clipe real de alarme** está disponível ainda (sem chave do Freesound e sem `smoke_real_manual/`). Enquanto for assim, qualquer métrica é só sobre positivos sintéticos e **isso precisa constar no relatório**. Ver `docs/PEDIDOS_PARA_ALUNA.md`.
+32 clipes baixados (19 CC0, 13 CC-BY; o *preview* mp3 convertido para 16 kHz mono). `ml/curate_real.py` excluiu 12 por critérios objetivos (`EXCLUDED.csv`); **20 clipes** ficam (14 treino / 3 validação / 3 teste, divididos **por autor** para não vazar séries quase duplicadas). São poucos: as métricas "positivo real" têm incerteza grande. Não há clipes em `smoke_real_manual/` (teste real) nem `alarm_demo.wav`. A chave fica em `.env` (ignorado pelo git; modelo em `.env.example`).

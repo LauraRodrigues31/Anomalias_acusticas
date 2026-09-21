@@ -1,6 +1,6 @@
 """Baixa clipes de alarme de fumaça pela API OFICIAL do Freesound (https://freesound.org/docs/api/).
 
-- Token lido de FREESOUND_API_KEY (nunca versionado). Sem a variável: avisa e sai sem erro.
+- Token lido de FREESOUND_API_KEY (ambiente ou .env na raiz; nunca versionado nem impresso). Sem a variável: avisa e sai sem erro.
 - Busca "smoke alarm" e "smoke detector"; mantém só licenças CC0 e CC-BY (Attribution).
 - Baixa o PREVIEW (mp3 hq): o download do arquivo original exige OAuth2, o preview só o token.
   Converte para WAV 16 kHz mono em data/raw/smoke_real/ e grava SOURCES.csv (id, autor, licença, URL).
@@ -16,6 +16,7 @@ import sys
 import time
 import numpy as np
 import requests
+from dotenv import load_dotenv
 import soundfile as sf
 from scipy.signal import resample_poly
 from ml import config as C
@@ -25,7 +26,17 @@ OUT = os.path.join(C.ROOT, "data", "raw", "smoke_real")
 QUERIES = ["smoke alarm", "smoke detector"]
 LICENSES = ["Creative Commons 0", "Attribution"]     # CC0 e CC-BY
 FIELDS = "id,name,username,license,url,duration,previews"
-PAUSE_S = 1.2   # < 60 req/min
+PAUSE_S = 1.2
+
+
+def license_name(url):
+    """A API devolve a licença como URL. Aceita só CC0 e CC-BY (sem NC/ND/SA); senão None."""
+    u = (url or "").lower()
+    if "publicdomain/zero" in u:
+        return "CC0"
+    if "/licenses/by/" in u:
+        return "CC-BY"
+    return None   # < 60 req/min
 
 
 def get(session, url, key, **params):
@@ -45,6 +56,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--max", type=int, default=40)
     a = ap.parse_args()
+    load_dotenv(os.path.join(C.ROOT, ".env"))   # .env só preenche o que o ambiente não definiu
     key = os.environ.get("FREESOUND_API_KEY")
     if not key:
         print("AVISO: variável FREESOUND_API_KEY não definida; pulando o download do Freesound.\n"
@@ -61,7 +73,7 @@ def main():
             r = get(s, f"{API}/search/text/", key, query=q, filter=f"license:({lic_filter}) duration:[0.5 TO 30]",
                     fields=FIELDS, page_size=50)
             for it in r.json().get("results", []):
-                if it["license"] in LICENSES and it["id"] not in found:
+                if license_name(it["license"]) and it["id"] not in found:
                     found[it["id"]] = it
         print(f"{len(found)} candidatos (CC0/CC-BY)")
         rows = []
@@ -78,10 +90,10 @@ def main():
                 x = resample_poly(x, C.FS, fs).astype(np.float32)
             fn = f"fs_{sid}.wav"
             sf.write(os.path.join(OUT, fn), x, C.FS, subtype="PCM_16")
-            rows.append(dict(id=sid, file=fn, author=it["username"], license=it["license"], url=it["url"],
+            rows.append(dict(id=sid, file=fn, author=it["username"], license=license_name(it["license"]), license_url=it["license"], url=it["url"],
                              name=it["name"], duration_s=round(it["duration"], 2),
                              note="preview mp3 hq convertido para 16 kHz mono"))
-            print(f"  baixado {fn} ({it['license']}, {it['username']})")
+            print(f"  baixado {fn} ({license_name(it['license'])}, {it['username']})")
     except Exception as e:
         print(f"ERRO na API do Freesound: {e}", file=sys.stderr)
     if rows:

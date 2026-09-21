@@ -77,16 +77,37 @@ def collect(limit):
                 x, _ = gen_alarm(np.random.default_rng(int(name.split("_")[1]) + 10_000))
             add(split, x, 1, "positivo_sintetico", src, name)
 
-    # --- positivos reais (Freesound via API): divididos 70/15/15 ---
-    fs_files = sorted(glob.glob(os.path.join(RAW, "smoke_real", "*.wav")))[:limit]
-    for split, items in strat_split(fs_files, rng).items():
+    # --- positivos reais (Freesound via API), após curadoria (ml/curate_real.py) ---
+    # Divisão por AUTOR (grupo): séries do mesmo autor/gravação são quase duplicatas e
+    # vazariam entre treino e teste se divididas por clipe.
+    fs_dir = os.path.join(RAW, "smoke_real")
+    fs_files, fs_author = [], {}
+    if os.path.exists(os.path.join(fs_dir, "SOURCES.csv")):
+        srcs = pd.read_csv(os.path.join(fs_dir, "SOURCES.csv"))
+        exc_path = os.path.join(fs_dir, "EXCLUDED.csv")
+        excl = set(pd.read_csv(exc_path).file) if os.path.exists(exc_path) else set()
+        for _, r in srcs.iterrows():
+            if r.file not in excl:
+                fs_files.append(os.path.join(fs_dir, r.file)); fs_author[os.path.join(fs_dir, r.file)] = r.author
+        fs_files = fs_files[:limit]
+    groups = {}
+    for p in fs_files:
+        groups.setdefault(fs_author[p], []).append(p)
+    gl = [groups[k] for k in rng.permutation(sorted(groups))]
+    tgt = {"train": 0.70 * len(fs_files), "val": 0.15 * len(fs_files), "test": 0.15 * len(fs_files)}
+    got = {"train": 0, "val": 0, "test": 0}
+    fs_split = {"train": [], "val": [], "test": []}
+    for g in sorted(gl, key=len, reverse=True):     # maiores grupos primeiro, no split mais "faminto"
+        sp = max(tgt, key=lambda k: tgt[k] - got[k])
+        fs_split[sp] += g; got[sp] += len(g)
+    for split, items in fs_split.items():
         for p in items:
             add(split, load_wav(p), 1, "positivo_real", "freesound", os.path.basename(p))
     # --- positivos reais MANUAIS: SÓ TESTE (nunca treino/validação) ---
     man = sorted(glob.glob(os.path.join(RAW, "smoke_real_manual", "*.wav")))
     for p in man:
         add("test", load_wav(p), 1, "positivo_real_manual", "manual", os.path.basename(p))
-    n_real = len(fs_files) + len(man)
+    n_real = len(fs_files) + len(man)   # já sem os excluídos pela curadoria
     if n_real < MIN_REAL_WARN:
         print(f"\n*** AVISO: só {n_real} clipes reais de alarme (< {MIN_REAL_WARN}). Avise a aluna antes de "
               f"decidir como reportar (ver docs/PEDIDOS_PARA_ALUNA.md). Sem positivos reais o relatório "

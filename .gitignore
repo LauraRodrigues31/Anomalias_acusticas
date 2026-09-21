@@ -8,3 +8,4 @@ __pycache__/
 *.wav
 .vscode/
 firmware/.pio/
+.env
