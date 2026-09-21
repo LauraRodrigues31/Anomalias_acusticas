@@ -34,7 +34,7 @@ Leia na ordem. Tudo aqui descreve o **código que existe** neste repositório. S
 | `tasks.cpp` `serial_log()` | `vsnprintf` num buffer estático **dentro** do `log_mutex` e `Serial.write` | evitar linhas misturadas | T3/T4 |
 | `audio_capture.cpp` `audio_init` / `audio_read_block` | configura o I2S (driver legado `driver/i2s.h`) e lê 512 palavras de 32 bits, convertendo com `audio_convert_sample` (`>> I2S_SAMPLE_SHIFT` + saturação). No `esp32-test` a fonte é a serial | traduz o INMP441 (24 bits alinhados à esquerda) para `int16` do treino | usado só por T1 |
 | `ring.cpp` `ring_write` / `ring_read` | buffer circular com número de sequência por slot | resolver a corrida T1×T2 no overrun | T1 escreve, T2 lê |
-| `alert.cpp` | LED (GPIO 2), buzzer opcional, `alert_suppressed()` | alerta + evitar realimentação | T3 |
+| `alert.cpp` | LED (GPIO 13, `LED_PIN` em `board_config.h`), buzzer opcional, `alert_suppressed()` | alerta + evitar realimentação | T3 |
 | `stats.cpp` `lat_add`, `lat_percentile` | acumula latências e calcula p50/p95 | medir | T3 escreve, T4 lê |
 | `selftest.cpp` | bring-up: LED, buzzer, mín/máx/média/RMS do I2S com barra ASCII | validar fiação | só no `esp32-selftest` |
 | `include/board_config.h` | pinos, prioridades, núcleos, pilhas, `I2S_SAMPLE_SHIFT`, `I2S_CHANNEL_SWAP` | configuração num lugar só | tudo |

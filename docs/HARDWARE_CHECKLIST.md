@@ -14,7 +14,7 @@
 | INMP441 SCK (BCLK) | GPIO 26 | `I2S_BCLK_PIN` | |
 | INMP441 WS (LRCL) | GPIO 25 | `I2S_WS_PIN` | |
 | INMP441 SD (DOUT) | GPIO 33 | `I2S_DIN_PIN` | |
-| LED | GPIO 2 | `LED_PIN` | LED da placa; se usar LED externo: GPIO 2 → resistor 220 Ω → LED → GND |
+| LED | GPIO 13 | `LED_PIN` | LED **externo**: GPIO 13 → resistor 220 Ω → LED → GND. O firmware não usa mais o GPIO 2 (o LED da placa não acompanha o alerta) |
 | Buzzer (opcional) | GPIO 27 | `BUZZER_PIN` | buzzer **ativo**; habilite com `-DUSE_BUZZER=1` (padrão desligado) |
 
 Fios curtos (< 15 cm) para I2S; fio longo no SCK gera ruído.
@@ -51,7 +51,7 @@ O autoteste descarta o 1º bloco (o INMP441 leva ~250 ms para ligar e entrega ze
 | leitura muda quando o L/R vai para 3V3 | você está no canal errado | manter L/R no GND **e** usar `I2S_CHANNEL_SWAP` conforme o resultado do teste |
 | alarme do celular fica **abaixo do gate** (`abaixo-do-gate`) | som fraco/longe; gate de −50 dBFS alto para o seu microfone | aproximar (30–50 cm), diminuir `I2S_SAMPLE_SHIFT` ou baixar o gate (seção 4); referência: 94 dB SPL ≈ −26 dBFS no INMP441 |
 | autoteste não imprime nada / lixo | baud errado | `pio device monitor -b 921600` |
-| upload falha ("Failed to connect") | GPIO 0/2 em nível errado no boot (LED externo/pull-up no GPIO 2) | soltar o LED externo do GPIO 2 durante a gravação; segurar BOOT se preciso |
+| upload falha ("Failed to connect") | GPIO 0/2 em nível errado no boot (pinos de *strapping*; nada deve estar ligado neles) | o LED agora está no GPIO 13, então não há LED em GPIO 0/2; se algo externo estiver ligado no 0 ou no 2, solte-o durante a gravação; segurar BOOT se preciso |
 
 Ajuste as constantes em `board_config.h` **ou** com `build_flags = -DI2S_SAMPLE_SHIFT=14` no `platformio.ini`. Auditoria do código I2S: pinos, `driver_install` → `set_pin` (ordem correta), formato 32 bits/`STAND_I2S`, `ONLY_LEFT`/`SWAP`, conversão com saturação e remoção de DC por janela estão conforme o esperado para Arduino-ESP32 2.0.x; **nada disso foi validado na placa**.
 
